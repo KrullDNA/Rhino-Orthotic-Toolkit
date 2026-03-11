@@ -77,8 +77,24 @@ class OrthoticPanel(ef.Panel):
         foot_scan_page = self._create_foot_scan_tab()
         self._tab_control.Pages.Add(foot_scan_page)
 
-        # Remaining tabs use placeholder stubs
-        for title, description in TAB_DEFINITIONS[1:]:
+        # Session 4 tabs: Outline, Arch, Heel Cup, Forefoot, Posting
+        outline_page = self._create_outline_tab()
+        self._tab_control.Pages.Add(outline_page)
+
+        arch_page = self._create_arch_tab()
+        self._tab_control.Pages.Add(arch_page)
+
+        heelcup_page = self._create_heelcup_tab()
+        self._tab_control.Pages.Add(heelcup_page)
+
+        forefoot_page = self._create_forefoot_tab()
+        self._tab_control.Pages.Add(forefoot_page)
+
+        posting_page = self._create_posting_tab()
+        self._tab_control.Pages.Add(posting_page)
+
+        # Remaining tabs (Thickness, Export) still use placeholder stubs
+        for title, description in TAB_DEFINITIONS[6:]:
             page = self._create_tab_page(title, description)
             self._tab_control.Pages.Add(page)
 
@@ -246,6 +262,495 @@ class OrthoticPanel(ef.Panel):
         """Update the extraction result status label."""
         self._extraction_label.Text = "Extraction: {}".format(message)
         self._extraction_label.TextColor = ed.SystemColors.ControlText
+
+    # --- Warning label infrastructure ---
+
+    def _make_warning_label(self):
+        """Create a hidden amber warning label for a tab."""
+        lbl = ef.Label()
+        lbl.Text = ""
+        lbl.TextColor = ed.Color.FromArgb(200, 150, 0)
+        lbl.Wrap = ef.WrapMode.Word
+        lbl.Visible = False
+        lbl.ToolTip = "Warning message from the last operation."
+        return lbl
+
+    def show_tab_warning(self, tab_name, message):
+        """Show an amber warning label on the specified tab."""
+        key = "_warn_{}".format(tab_name.lower().replace(" ", "_"))
+        lbl = getattr(self, key, None)
+        if lbl is not None:
+            lbl.Text = message
+            lbl.Visible = True
+
+    def _clear_tab_warning(self, tab_name):
+        """Hide the warning label on the specified tab."""
+        key = "_warn_{}".format(tab_name.lower().replace(" ", "_"))
+        lbl = getattr(self, key, None)
+        if lbl is not None:
+            lbl.Text = ""
+            lbl.Visible = False
+
+    # --- Helper: slider row with value label ---
+
+    def _make_slider_row(self, attr_name, min_val, max_val, default, step,
+                         tooltip, fmt="{:.1f}"):
+        """Create a slider + value label row. Returns (row_layout, slider, label)."""
+        row = ef.DynamicLayout()
+        row.DefaultSpacing = ed.Size(5, 0)
+
+        # For integer-range sliders, map float to int range 0..steps
+        steps = int(round((max_val - min_val) / step)) if step > 0 else 100
+        default_tick = int(round((default - min_val) / step)) if step > 0 else 50
+
+        slider = ef.Slider()
+        slider.MinValue = 0
+        slider.MaxValue = steps
+        slider.Value = default_tick
+        slider.ToolTip = tooltip
+
+        val_label = ef.Label()
+        val_label.Text = fmt.format(default)
+        val_label.ToolTip = "Current value"
+
+        def on_change(s, e):
+            val = min_val + slider.Value * step
+            val_label.Text = fmt.format(val)
+
+        slider.ValueChanged += on_change
+
+        row.BeginHorizontal()
+        row.Add(slider, xscale=True)
+        row.Add(val_label)
+        row.EndHorizontal()
+
+        # Store references for later retrieval
+        setattr(self, "_slider_" + attr_name, slider)
+        setattr(self, "_slbl_" + attr_name, val_label)
+        setattr(self, "_smeta_" + attr_name, (min_val, step, fmt))
+
+        return row
+
+    def _get_slider_value(self, attr_name):
+        """Read the current value from a named slider."""
+        slider = getattr(self, "_slider_" + attr_name, None)
+        meta = getattr(self, "_smeta_" + attr_name, None)
+        if slider is not None and meta is not None:
+            min_val, step, _ = meta
+            return min_val + slider.Value * step
+        return None
+
+    # --- Outline tab ---
+
+    def _create_outline_tab(self):
+        page = ef.TabPage()
+        page.Text = "Outline"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[1][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Outline tab functionality."
+        layout.Add(desc)
+
+        self._warn_outline = self._make_warning_label()
+        layout.Add(self._warn_outline)
+
+        layout.AddSpace()
+
+        lbl1 = ef.Label()
+        lbl1.Text = "Perimeter Offset (mm):"
+        lbl1.ToolTip = "Inward offset from the footprint curve."
+        layout.Add(lbl1)
+        layout.Add(self._make_slider_row(
+            "perimeter_offset", 0.0, 10.0, 2.0, 0.5,
+            "Perimeter offset in mm (0 - 10)"
+        ))
+
+        lbl2 = ef.Label()
+        lbl2.Text = "Toe Extension (mm):"
+        lbl2.ToolTip = "Extend the outline beyond the toe region."
+        layout.Add(lbl2)
+        layout.Add(self._make_slider_row(
+            "toe_extension", 0.0, 20.0, 0.0, 0.5,
+            "Toe extension in mm (0 - 20)"
+        ))
+
+        lbl3 = ef.Label()
+        lbl3.Text = "Heel Extension (mm):"
+        lbl3.ToolTip = "Extend the outline beyond the heel region."
+        layout.Add(lbl3)
+        layout.Add(self._make_slider_row(
+            "heel_extension", 0.0, 20.0, 0.0, 0.5,
+            "Heel extension in mm (0 - 20)"
+        ))
+
+        layout.AddSpace()
+
+        btn = ef.Button()
+        btn.Text = "Generate Outline"
+        btn.ToolTip = "Generate the insole outline and initial flat Brep."
+        btn.Click += self._on_generate_outline
+        layout.Add(btn)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_generate_outline(self, sender, e):
+        self._clear_tab_warning("Outline")
+        Rhino.RhinoApp.RunScript("OT_GenerateOutline", False)
+
+    def get_outline_params(self):
+        return (
+            self._get_slider_value("perimeter_offset") or 2.0,
+            self._get_slider_value("toe_extension") or 0.0,
+            self._get_slider_value("heel_extension") or 0.0,
+        )
+
+    # --- Arch tab ---
+
+    def _create_arch_tab(self):
+        page = ef.TabPage()
+        page.Text = "Arch"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[2][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Arch tab functionality."
+        layout.Add(desc)
+
+        self._warn_arch = self._make_warning_label()
+        layout.Add(self._warn_arch)
+
+        layout.AddSpace()
+
+        lbl1 = ef.Label()
+        lbl1.Text = "Arch Height (mm):"
+        lbl1.ToolTip = "Maximum height of the medial arch support."
+        layout.Add(lbl1)
+        layout.Add(self._make_slider_row(
+            "arch_height", 0.0, 30.0, 10.0, 0.5,
+            "Arch height in mm (0 - 30)"
+        ))
+
+        lbl2 = ef.Label()
+        lbl2.Text = "Apex Position (%):"
+        lbl2.ToolTip = "Position of the arch apex as % along the arch."
+        layout.Add(lbl2)
+        layout.Add(self._make_slider_row(
+            "arch_apex", 20.0, 80.0, 50.0, 1.0,
+            "Apex position percentage (20 - 80)", fmt="{:.0f}"
+        ))
+
+        lbl3 = ef.Label()
+        lbl3.Text = "Arch Width (mm):"
+        lbl3.ToolTip = "Width of the arch support."
+        layout.Add(lbl3)
+        layout.Add(self._make_slider_row(
+            "arch_width", 5.0, 40.0, 20.0, 0.5,
+            "Arch width in mm (5 - 40)"
+        ))
+
+        lbl4 = ef.Label()
+        lbl4.Text = "Blend Radius (mm):"
+        lbl4.ToolTip = "Fillet radius for blending the arch into the insole."
+        layout.Add(lbl4)
+        layout.Add(self._make_slider_row(
+            "arch_blend", 0.0, 10.0, 3.0, 0.5,
+            "Blend fillet radius in mm (0 - 10)"
+        ))
+
+        layout.AddSpace()
+
+        btn = ef.Button()
+        btn.Text = "Apply Arch"
+        btn.ToolTip = "Add medial arch support to the insole."
+        btn.Click += self._on_add_arch
+        layout.Add(btn)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_add_arch(self, sender, e):
+        self._clear_tab_warning("Arch")
+        Rhino.RhinoApp.RunScript("OT_AddArch", False)
+
+    def get_arch_params(self):
+        return (
+            self._get_slider_value("arch_height") or 10.0,
+            self._get_slider_value("arch_apex") or 50.0,
+            self._get_slider_value("arch_width") or 20.0,
+            self._get_slider_value("arch_blend") or 3.0,
+        )
+
+    # --- Heel Cup tab ---
+
+    def _create_heelcup_tab(self):
+        page = ef.TabPage()
+        page.Text = "Heel Cup"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[3][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Heel Cup tab functionality."
+        layout.Add(desc)
+
+        self._warn_heel_cup = self._make_warning_label()
+        layout.Add(self._warn_heel_cup)
+
+        layout.AddSpace()
+
+        lbl1 = ef.Label()
+        lbl1.Text = "Cup Depth (mm):"
+        lbl1.ToolTip = "Depth of the heel cup walls."
+        layout.Add(lbl1)
+        layout.Add(self._make_slider_row(
+            "cup_depth", 0.0, 30.0, 12.0, 0.5,
+            "Heel cup depth in mm (0 - 30)"
+        ))
+
+        lbl2 = ef.Label()
+        lbl2.Text = "Posterior Angle (deg):"
+        lbl2.ToolTip = "Angle of the posterior (back) wall."
+        layout.Add(lbl2)
+        layout.Add(self._make_slider_row(
+            "posterior_angle", 60.0, 120.0, 90.0, 1.0,
+            "Posterior wall angle in degrees (60 - 120)", fmt="{:.0f}"
+        ))
+
+        lbl3 = ef.Label()
+        lbl3.Text = "Lateral Flare (deg):"
+        lbl3.ToolTip = "Outward flare angle of the lateral wall."
+        layout.Add(lbl3)
+        layout.Add(self._make_slider_row(
+            "lateral_flare", 0.0, 30.0, 10.0, 1.0,
+            "Lateral flare angle in degrees (0 - 30)", fmt="{:.0f}"
+        ))
+
+        lbl4 = ef.Label()
+        lbl4.Text = "Medial Flare (deg):"
+        lbl4.ToolTip = "Outward flare angle of the medial wall."
+        layout.Add(lbl4)
+        layout.Add(self._make_slider_row(
+            "medial_flare", 0.0, 30.0, 10.0, 1.0,
+            "Medial flare angle in degrees (0 - 30)", fmt="{:.0f}"
+        ))
+
+        lbl5 = ef.Label()
+        lbl5.Text = "Cup Width (%):"
+        lbl5.ToolTip = "Cup width as percentage of heel width."
+        layout.Add(lbl5)
+        layout.Add(self._make_slider_row(
+            "cup_width_pct", 50.0, 150.0, 100.0, 5.0,
+            "Cup width percentage (50 - 150)", fmt="{:.0f}"
+        ))
+
+        layout.AddSpace()
+
+        btn = ef.Button()
+        btn.Text = "Apply Heel Cup"
+        btn.ToolTip = "Add heel cup to the insole."
+        btn.Click += self._on_add_heelcup
+        layout.Add(btn)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_add_heelcup(self, sender, e):
+        self._clear_tab_warning("Heel Cup")
+        Rhino.RhinoApp.RunScript("OT_AddHeelCup", False)
+
+    def get_heelcup_params(self):
+        return (
+            self._get_slider_value("cup_depth") or 12.0,
+            self._get_slider_value("posterior_angle") or 90.0,
+            self._get_slider_value("lateral_flare") or 10.0,
+            self._get_slider_value("medial_flare") or 10.0,
+            self._get_slider_value("cup_width_pct") or 100.0,
+        )
+
+    # --- Forefoot (Met Dome) tab ---
+
+    def _create_forefoot_tab(self):
+        page = ef.TabPage()
+        page.Text = "Forefoot"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[4][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Forefoot tab functionality."
+        layout.Add(desc)
+
+        self._warn_forefoot = self._make_warning_label()
+        layout.Add(self._warn_forefoot)
+
+        layout.AddSpace()
+
+        lbl1 = ef.Label()
+        lbl1.Text = "Dome Count:"
+        lbl1.ToolTip = "Number of metatarsal domes to add."
+        layout.Add(lbl1)
+        layout.Add(self._make_slider_row(
+            "dome_count", 1, 5, 1, 1,
+            "Number of metatarsal domes (1 - 5)", fmt="{:.0f}"
+        ))
+
+        lbl2 = ef.Label()
+        lbl2.Text = "Dome Height (mm):"
+        lbl2.ToolTip = "Height of each metatarsal dome."
+        layout.Add(lbl2)
+        layout.Add(self._make_slider_row(
+            "dome_height", 1.0, 15.0, 5.0, 0.5,
+            "Dome height in mm (1 - 15)"
+        ))
+
+        lbl3 = ef.Label()
+        lbl3.Text = "Dome Diameter (mm):"
+        lbl3.ToolTip = "Diameter of each metatarsal dome."
+        layout.Add(lbl3)
+        layout.Add(self._make_slider_row(
+            "dome_diameter", 5.0, 30.0, 10.0, 0.5,
+            "Dome diameter in mm (5 - 30)"
+        ))
+
+        layout.AddSpace()
+
+        btn = ef.Button()
+        btn.Text = "Apply Met Domes"
+        btn.ToolTip = "Add metatarsal dome pads to the forefoot region."
+        btn.Click += self._on_add_metdome
+        layout.Add(btn)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_add_metdome(self, sender, e):
+        self._clear_tab_warning("Forefoot")
+        Rhino.RhinoApp.RunScript("OT_AddMetDome", False)
+
+    def get_metdome_params(self):
+        count = int(self._get_slider_value("dome_count") or 1)
+        height = self._get_slider_value("dome_height") or 5.0
+        diameter = self._get_slider_value("dome_diameter") or 10.0
+        # Auto-generate positions using the count, height, diameter
+        positions = []
+        for i in range(count):
+            if count == 1:
+                x_pct = 50.0
+            else:
+                x_pct = 25.0 + (50.0 * i / (count - 1))
+            positions.append((x_pct, 75.0, height, diameter))
+        return count, positions
+
+    # --- Posting tab ---
+
+    def _create_posting_tab(self):
+        page = ef.TabPage()
+        page.Text = "Posting"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[5][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Posting tab functionality."
+        layout.Add(desc)
+
+        self._warn_posting = self._make_warning_label()
+        layout.Add(self._warn_posting)
+
+        layout.AddSpace()
+
+        lbl1 = ef.Label()
+        lbl1.Text = "RF Medial (deg):"
+        lbl1.ToolTip = "Rearfoot medial posting angle."
+        layout.Add(lbl1)
+        layout.Add(self._make_slider_row(
+            "rf_medial", 0.0, 15.0, 0.0, 0.5,
+            "Rearfoot medial posting angle (0 - 15)"
+        ))
+
+        lbl2 = ef.Label()
+        lbl2.Text = "RF Lateral (deg):"
+        lbl2.ToolTip = "Rearfoot lateral posting angle."
+        layout.Add(lbl2)
+        layout.Add(self._make_slider_row(
+            "rf_lateral", 0.0, 15.0, 0.0, 0.5,
+            "Rearfoot lateral posting angle (0 - 15)"
+        ))
+
+        lbl3 = ef.Label()
+        lbl3.Text = "FF Medial (deg):"
+        lbl3.ToolTip = "Forefoot medial posting angle."
+        layout.Add(lbl3)
+        layout.Add(self._make_slider_row(
+            "ff_medial", 0.0, 15.0, 0.0, 0.5,
+            "Forefoot medial posting angle (0 - 15)"
+        ))
+
+        lbl4 = ef.Label()
+        lbl4.Text = "FF Lateral (deg):"
+        lbl4.ToolTip = "Forefoot lateral posting angle."
+        layout.Add(lbl4)
+        layout.Add(self._make_slider_row(
+            "ff_lateral", 0.0, 15.0, 0.0, 0.5,
+            "Forefoot lateral posting angle (0 - 15)"
+        ))
+
+        lbl5 = ef.Label()
+        lbl5.Text = "RF/FF Split (%):"
+        lbl5.ToolTip = "Rearfoot/forefoot split position as percentage."
+        layout.Add(lbl5)
+        layout.Add(self._make_slider_row(
+            "split_pct", 30.0, 70.0, 50.0, 1.0,
+            "RF/FF split percentage (30 - 70)", fmt="{:.0f}"
+        ))
+
+        layout.AddSpace()
+
+        btn = ef.Button()
+        btn.Text = "Apply Posting"
+        btn.ToolTip = "Add rearfoot and forefoot posting wedges."
+        btn.Click += self._on_add_posting
+        layout.Add(btn)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_add_posting(self, sender, e):
+        self._clear_tab_warning("Posting")
+        Rhino.RhinoApp.RunScript("OT_AddPosting", False)
+
+    def get_posting_params(self):
+        return (
+            self._get_slider_value("rf_medial") or 0.0,
+            self._get_slider_value("rf_lateral") or 0.0,
+            self._get_slider_value("ff_medial") or 0.0,
+            self._get_slider_value("ff_lateral") or 0.0,
+            self._get_slider_value("split_pct") or 50.0,
+        )
 
     def _create_tab_page(self, title, description):
         """Create a single tab page with description label and placeholder button."""

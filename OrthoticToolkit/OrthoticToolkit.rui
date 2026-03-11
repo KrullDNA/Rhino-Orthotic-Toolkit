@@ -12,16 +12,12 @@
             right_size="24">
     <tool_bar_item type="normal">
       <left_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_SetLast)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_SetLast)]]></macro>
         <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
         <button_text>OT_SetLast</button_text>
       </left_macro>
       <right_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_SetLast)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_SetLast)]]></macro>
         <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
         <button_text>OT_SetLast</button_text>
       </right_macro>
@@ -29,48 +25,36 @@
     <tool_bar_item type="separator" />
     <tool_bar_item type="normal">
       <left_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ImportScan)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_ImportScan)]]></macro>
         <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
         <button_text>OT_ImportScan</button_text>
       </left_macro>
       <right_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ImportScan)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_ImportScan)]]></macro>
         <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
         <button_text>OT_ImportScan</button_text>
       </right_macro>
     </tool_bar_item>
     <tool_bar_item type="normal">
       <left_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_OrientScan)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_OrientScan)]]></macro>
         <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
         <button_text>OT_OrientScan</button_text>
       </left_macro>
       <right_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_OrientScan)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_OrientScan)]]></macro>
         <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
         <button_text>OT_OrientScan</button_text>
       </right_macro>
     </tool_bar_item>
     <tool_bar_item type="normal">
       <left_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_ExtractPlantar)]]></macro>
         <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
         <button_text>OT_ExtractPlantar</button_text>
       </left_macro>
       <right_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_ExtractPlantar)]]></macro>
         <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
         <button_text>OT_ExtractPlantar</button_text>
       </right_macro>
@@ -78,16 +62,73 @@
     <tool_bar_item type="separator" />
     <tool_bar_item type="normal">
       <left_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ResetAll)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_GenerateOutline)]]></macro>
+        <tooltip>Generate Outline - Create the insole outline from the footprint</tooltip>
+        <button_text>OT_GenerateOutline</button_text>
+      </left_macro>
+      <right_macro>
+        <macro><![CDATA[! _-RunScript (OT_GenerateOutline)]]></macro>
+        <tooltip>Generate Outline - Create the insole outline from the footprint</tooltip>
+        <button_text>OT_GenerateOutline</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddArch)]]></macro>
+        <tooltip>Add Arch - Add medial arch support to the insole</tooltip>
+        <button_text>OT_AddArch</button_text>
+      </left_macro>
+      <right_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddArch)]]></macro>
+        <tooltip>Add Arch - Add medial arch support to the insole</tooltip>
+        <button_text>OT_AddArch</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddHeelCup)]]></macro>
+        <tooltip>Add Heel Cup - Add heel cup to the insole</tooltip>
+        <button_text>OT_AddHeelCup</button_text>
+      </left_macro>
+      <right_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddHeelCup)]]></macro>
+        <tooltip>Add Heel Cup - Add heel cup to the insole</tooltip>
+        <button_text>OT_AddHeelCup</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddMetDome)]]></macro>
+        <tooltip>Add Met Dome - Add metatarsal dome pads to the forefoot</tooltip>
+        <button_text>OT_AddMetDome</button_text>
+      </left_macro>
+      <right_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddMetDome)]]></macro>
+        <tooltip>Add Met Dome - Add metatarsal dome pads to the forefoot</tooltip>
+        <button_text>OT_AddMetDome</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddPosting)]]></macro>
+        <tooltip>Add Posting - Add rearfoot and forefoot posting wedges</tooltip>
+        <button_text>OT_AddPosting</button_text>
+      </left_macro>
+      <right_macro>
+        <macro><![CDATA[! _-RunScript (OT_AddPosting)]]></macro>
+        <tooltip>Add Posting - Add rearfoot and forefoot posting wedges</tooltip>
+        <button_text>OT_AddPosting</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="separator" />
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro><![CDATA[! _-RunScript (OT_ResetAll)]]></macro>
         <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
         <button_text>OT_ResetAll</button_text>
       </left_macro>
       <right_macro>
-        <macro>
-          <![CDATA[! _-RunScript (OT_ResetAll)]]>
-        </macro>
+        <macro><![CDATA[! _-RunScript (OT_ResetAll)]]></macro>
         <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
         <button_text>OT_ResetAll</button_text>
       </right_macro>
@@ -95,37 +136,52 @@
   </tool_bar>
   <macros>
     <macro_item name="OT_SetLast">
-      <macro>
-        <![CDATA[! _-RunScript (OT_SetLast)]]>
-      </macro>
+      <macro><![CDATA[! _-RunScript (OT_SetLast)]]></macro>
       <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
       <button_text>OT_SetLast</button_text>
     </macro_item>
     <macro_item name="OT_ImportScan">
-      <macro>
-        <![CDATA[! _-RunScript (OT_ImportScan)]]>
-      </macro>
+      <macro><![CDATA[! _-RunScript (OT_ImportScan)]]></macro>
       <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
       <button_text>OT_ImportScan</button_text>
     </macro_item>
     <macro_item name="OT_OrientScan">
-      <macro>
-        <![CDATA[! _-RunScript (OT_OrientScan)]]>
-      </macro>
+      <macro><![CDATA[! _-RunScript (OT_OrientScan)]]></macro>
       <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
       <button_text>OT_OrientScan</button_text>
     </macro_item>
     <macro_item name="OT_ExtractPlantar">
-      <macro>
-        <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
-      </macro>
+      <macro><![CDATA[! _-RunScript (OT_ExtractPlantar)]]></macro>
       <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
       <button_text>OT_ExtractPlantar</button_text>
     </macro_item>
+    <macro_item name="OT_GenerateOutline">
+      <macro><![CDATA[! _-RunScript (OT_GenerateOutline)]]></macro>
+      <tooltip>Generate Outline - Create the insole outline from the footprint</tooltip>
+      <button_text>OT_GenerateOutline</button_text>
+    </macro_item>
+    <macro_item name="OT_AddArch">
+      <macro><![CDATA[! _-RunScript (OT_AddArch)]]></macro>
+      <tooltip>Add Arch - Add medial arch support to the insole</tooltip>
+      <button_text>OT_AddArch</button_text>
+    </macro_item>
+    <macro_item name="OT_AddHeelCup">
+      <macro><![CDATA[! _-RunScript (OT_AddHeelCup)]]></macro>
+      <tooltip>Add Heel Cup - Add heel cup to the insole</tooltip>
+      <button_text>OT_AddHeelCup</button_text>
+    </macro_item>
+    <macro_item name="OT_AddMetDome">
+      <macro><![CDATA[! _-RunScript (OT_AddMetDome)]]></macro>
+      <tooltip>Add Met Dome - Add metatarsal dome pads to the forefoot</tooltip>
+      <button_text>OT_AddMetDome</button_text>
+    </macro_item>
+    <macro_item name="OT_AddPosting">
+      <macro><![CDATA[! _-RunScript (OT_AddPosting)]]></macro>
+      <tooltip>Add Posting - Add rearfoot and forefoot posting wedges</tooltip>
+      <button_text>OT_AddPosting</button_text>
+    </macro_item>
     <macro_item name="OT_ResetAll">
-      <macro>
-        <![CDATA[! _-RunScript (OT_ResetAll)]]>
-      </macro>
+      <macro><![CDATA[! _-RunScript (OT_ResetAll)]]></macro>
       <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
       <button_text>OT_ResetAll</button_text>
     </macro_item>
