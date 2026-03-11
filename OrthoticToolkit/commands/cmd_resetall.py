@@ -26,8 +26,17 @@ class OT_ResetAll(rc.Command):
         return "OT_ResetAll"
 
     def RunCommand(self, doc, mode):
+        # Remove any preview objects from the document before clearing IDs
+        for obj_id in state.preview_object_ids:
+            try:
+                doc.Objects.Delete(obj_id, True)
+            except Exception:
+                pass
+
         # Reset all state variables
         state.reset_all()
+
+        doc.Views.Redraw()
 
         # Try to refresh the panel labels
         try:

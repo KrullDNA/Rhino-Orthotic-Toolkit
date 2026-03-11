@@ -13,6 +13,23 @@
     <tool_bar_item type="normal">
       <left_macro>
         <macro>
+          <![CDATA[! _-RunScript (OT_SetLast)]]>
+        </macro>
+        <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
+        <button_text>OT_SetLast</button_text>
+      </left_macro>
+      <right_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_SetLast)]]>
+        </macro>
+        <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
+        <button_text>OT_SetLast</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="separator" />
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro>
           <![CDATA[! _-RunScript (OT_ResetAll)]]>
         </macro>
         <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
@@ -28,6 +45,13 @@
     </tool_bar_item>
   </tool_bar>
   <macros>
+    <macro_item name="OT_SetLast">
+      <macro>
+        <![CDATA[! _-RunScript (OT_SetLast)]]>
+      </macro>
+      <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
+      <button_text>OT_SetLast</button_text>
+    </macro_item>
     <macro_item name="OT_ResetAll">
       <macro>
         <![CDATA[! _-RunScript (OT_ResetAll)]]>

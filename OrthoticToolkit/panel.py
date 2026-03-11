@@ -8,6 +8,7 @@ fixed pixel sizes.
 
 import Eto.Forms as ef
 import Eto.Drawing as ed
+import Rhino
 
 
 # Tab definitions: (title, description)
@@ -151,12 +152,27 @@ class OrthoticPanel(ef.Panel):
         self._select_last_btn.Text = "Select Last"
         self._select_last_btn.ToolTip = (
             "Select a shoe last polysurface from the Rhino viewport. "
-            "This will be wired up in Session 2."
+            "The plugin will detect the sole face and create the "
+            "inverse sole surface for insole design."
         )
-        self._select_last_btn.Enabled = False  # Wired in Session 2
+        self._select_last_btn.Click += self._on_select_last_click
         status_layout.Add(self._select_last_btn)
 
         return status_layout
+
+    def _on_select_last_click(self, sender, e):
+        """Handle the Select Last button click by running OT_SetLast."""
+        import state
+
+        Rhino.RhinoApp.RunScript("OT_SetLast", False)
+
+        # After the command completes, refresh the label from state
+        if state.active_last_name:
+            self.update_last_label(state.active_last_name)
+        else:
+            # Command may have failed -- check if state is still empty
+            if state.active_last_brep is None:
+                self.show_last_error()
 
     def update_last_label(self, name):
         """Update the Active Last status label."""
@@ -166,6 +182,11 @@ class OrthoticPanel(ef.Panel):
         else:
             self._last_label.Text = "Active Last: None"
             self._last_label.TextColor = ed.SystemColors.ControlText
+
+    def show_last_error(self):
+        """Show the Active Last label in red to indicate an error."""
+        self._last_label.Text = "Active Last: ERROR -- see command line"
+        self._last_label.TextColor = ed.Color.FromArgb(220, 0, 0)
 
     def update_scan_label(self, filename):
         """Update the Scan status label."""
