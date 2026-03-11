@@ -14,22 +14,11 @@ import Eto.Forms as ef
 import scriptcontext as sc
 
 import state
+from geometry.layer_utils import ensure_layer, clear_layer
 
 
 OT_ROCKER_LAYER = "OT_RockerContact"
-ROCKER_COLOR = System.Drawing.Color.FromArgb(160, 0, 200)  # Purple
 ROCKER_OFFSET_Z = 2.0  # Offset upward from base plane
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 class OT_RockerOutline(rc.Command):
@@ -169,11 +158,8 @@ class OT_RockerOutline(rc.Command):
             return rc.Result.Failure
 
         # Clear previous rocker objects
-        layer_index = _ensure_layer(OT_ROCKER_LAYER, ROCKER_COLOR)
-        settings = rd.ObjectEnumeratorSettings()
-        settings.LayerIndexFilter = layer_index
-        for obj in doc.Objects.GetObjectList(settings):
-            doc.Objects.Delete(obj.Id, True)
+        clear_layer(OT_ROCKER_LAYER)
+        layer_index = ensure_layer(OT_ROCKER_LAYER)
 
         # Add the rocker curve to the document
         attrs = rd.ObjectAttributes()

@@ -17,22 +17,11 @@ import Eto.Forms as ef
 import scriptcontext as sc
 
 import state
+from geometry.layer_utils import ensure_layer
 
 
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_FOOTSCAN_LAYER = "OT_FootScan"
-FOOTSCAN_COLOR = System.Drawing.Color.FromArgb(100, 149, 237)  # Cornflower blue
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 def _refresh_panel_scan(filename):
@@ -118,7 +107,7 @@ class OT_ImportScan(rc.Command):
         state.foot_scan_filename = filename
 
         # Move the object to the OT_FootScan layer
-        layer_index = _ensure_layer(OT_FOOTSCAN_LAYER, FOOTSCAN_COLOR)
+        layer_index = ensure_layer(OT_FOOTSCAN_LAYER)
         rhino_obj = obj_ref.Object()
         attrs = rhino_obj.Attributes.Duplicate()
         attrs.LayerIndex = layer_index

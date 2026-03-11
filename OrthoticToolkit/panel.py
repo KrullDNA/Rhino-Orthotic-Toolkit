@@ -124,7 +124,11 @@ class OrthoticPanel(ef.Panel):
             "extract the plantar surface for insole design."
         )
         desc_label.Wrap = ef.WrapMode.Word
-        desc_label.ToolTip = "Description of the Foot Scan tab functionality."
+        desc_label.ToolTip = (
+            "Use this tab to import a 3D foot scan file, orient it so the "
+            "sole faces downward, smooth the mesh, and extract a NURBS "
+            "plantar surface for the insole to conform to."
+        )
         layout.Add(desc_label)
 
         layout.AddSpace()
@@ -144,7 +148,10 @@ class OrthoticPanel(ef.Panel):
         # Orientation preset dropdown
         orient_label = ef.Label()
         orient_label.Text = "Orientation Preset:"
-        orient_label.ToolTip = "Choose how the scan was oriented by the scanner."
+        orient_label.ToolTip = (
+            "If your scanner outputs the foot in a non-standard orientation, "
+            "select the matching preset here before running Auto-Orient."
+        )
         layout.Add(orient_label)
 
         self._orient_dropdown = ef.DropDown()
@@ -187,12 +194,16 @@ class OrthoticPanel(ef.Panel):
         self._smooth_slider.MinValue = 0
         self._smooth_slider.MaxValue = 5
         self._smooth_slider.Value = 2
-        self._smooth_slider.ToolTip = "Smoothing passes (0 = none, 5 = maximum)"
+        self._smooth_slider.ToolTip = (
+            "Number of Laplacian smoothing passes applied to the foot scan "
+            "mesh before plantar extraction. 0 = raw scan detail, "
+            "2 = recommended, 5 = very smooth but may lose fine detail."
+        )
         self._smooth_slider.ValueChanged += self._on_smooth_changed
 
         self._smooth_value_label = ef.Label()
         self._smooth_value_label.Text = "2"
-        self._smooth_value_label.ToolTip = "Current smoothing passes value"
+        self._smooth_value_label.ToolTip = "Current number of smoothing passes that will be applied."
 
         smooth_row.BeginHorizontal()
         smooth_row.Add(self._smooth_slider, xscale=True)
@@ -355,7 +366,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[1][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Outline tab functionality."
+        desc.ToolTip = (
+            "Creates the insole perimeter shape from the shoe last footprint. "
+            "Adjust offsets to control how much the insole extends beyond or "
+            "shrinks inside the footprint edge."
+        )
         layout.Add(desc)
 
         self._warn_outline = self._make_warning_label()
@@ -365,36 +380,52 @@ class OrthoticPanel(ef.Panel):
 
         lbl1 = ef.Label()
         lbl1.Text = "Perimeter Offset (mm):"
-        lbl1.ToolTip = "Inward offset from the footprint curve."
+        lbl1.ToolTip = (
+            "How far inward the insole outline is offset from the shoe last "
+            "footprint edge. 2mm is standard; increase for a looser fit."
+        )
         layout.Add(lbl1)
         layout.Add(self._make_slider_row(
             "perimeter_offset", 0.0, 10.0, 2.0, 0.5,
-            "Perimeter offset in mm (0 - 10)"
+            "Shrinks the insole outline inward from the footprint edge. "
+            "2mm is standard for a snug fit inside the shoe."
         ))
 
         lbl2 = ef.Label()
         lbl2.Text = "Toe Extension (mm):"
-        lbl2.ToolTip = "Extend the outline beyond the toe region."
+        lbl2.ToolTip = (
+            "Extends the insole outline past the toe region. Use for "
+            "full-length insoles or extra forefoot coverage."
+        )
         layout.Add(lbl2)
         layout.Add(self._make_slider_row(
             "toe_extension", 0.0, 20.0, 0.0, 0.5,
-            "Toe extension in mm (0 - 20)"
+            "Adds length beyond the toe end of the footprint. "
+            "0mm = standard, 5-10mm for full-length insoles."
         ))
 
         lbl3 = ef.Label()
         lbl3.Text = "Heel Extension (mm):"
-        lbl3.ToolTip = "Extend the outline beyond the heel region."
+        lbl3.ToolTip = (
+            "Extends the insole outline past the heel. Use for extra "
+            "rearfoot coverage or longer heel cups."
+        )
         layout.Add(lbl3)
         layout.Add(self._make_slider_row(
             "heel_extension", 0.0, 20.0, 0.0, 0.5,
-            "Heel extension in mm (0 - 20)"
+            "Adds length beyond the heel end of the footprint. "
+            "0mm = standard, 5-10mm for extended heel platforms."
         ))
 
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Generate Outline"
-        btn.ToolTip = "Generate the insole outline and initial flat Brep."
+        btn.ToolTip = (
+            "Create the insole outline curve and a flat base Brep from the "
+            "current shoe last footprint. This is the starting shape that "
+            "all other tools build upon."
+        )
         btn.Click += self._on_generate_outline
         layout.Add(btn)
 
@@ -426,7 +457,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[2][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Arch tab functionality."
+        desc.ToolTip = (
+            "Builds a raised medial arch support on the insole. The arch "
+            "follows a parabolic profile and is blended smoothly into "
+            "the surrounding insole surface."
+        )
         layout.Add(desc)
 
         self._warn_arch = self._make_warning_label()
@@ -436,45 +471,68 @@ class OrthoticPanel(ef.Panel):
 
         lbl1 = ef.Label()
         lbl1.Text = "Arch Height (mm):"
-        lbl1.ToolTip = "Maximum height of the medial arch support."
+        lbl1.ToolTip = (
+            "Sets how high the medial arch rises above the base insole "
+            "surface. 8-12mm is typical for moderate arch support, "
+            "15-25mm for high-arch correction."
+        )
         layout.Add(lbl1)
         layout.Add(self._make_slider_row(
             "arch_height", 0.0, 30.0, 10.0, 0.5,
-            "Arch height in mm (0 - 30)"
+            "Peak height of the medial arch above the insole base. "
+            "8-12mm moderate, 15-25mm high correction."
         ))
 
         lbl2 = ef.Label()
         lbl2.Text = "Apex Position (%):"
-        lbl2.ToolTip = "Position of the arch apex as % along the arch."
+        lbl2.ToolTip = (
+            "Where along the medial edge the arch peak sits, as a percentage "
+            "from heel to toe. 50% is centred; lower values shift the apex "
+            "rearward toward the heel."
+        )
         layout.Add(lbl2)
         layout.Add(self._make_slider_row(
             "arch_apex", 20.0, 80.0, 50.0, 1.0,
-            "Apex position percentage (20 - 80)", fmt="{:.0f}"
+            "Position of the arch peak along the foot length. "
+            "50% = midfoot, 30-40% = rearfoot bias.", fmt="{:.0f}"
         ))
 
         lbl3 = ef.Label()
         lbl3.Text = "Arch Width (mm):"
-        lbl3.ToolTip = "Width of the arch support."
+        lbl3.ToolTip = (
+            "How far the arch support extends laterally from the medial "
+            "edge toward the centre of the insole. 15-25mm is typical."
+        )
         layout.Add(lbl3)
         layout.Add(self._make_slider_row(
             "arch_width", 5.0, 40.0, 20.0, 0.5,
-            "Arch width in mm (5 - 40)"
+            "Lateral extent of the arch from the medial edge inward. "
+            "15-25mm covers the medial column."
         ))
 
         lbl4 = ef.Label()
         lbl4.Text = "Blend Radius (mm):"
-        lbl4.ToolTip = "Fillet radius for blending the arch into the insole."
+        lbl4.ToolTip = (
+            "Fillet radius that smooths the transition between the arch "
+            "and the flat insole surface. Higher values create a gentler "
+            "ramp; 0 = sharp edge."
+        )
         layout.Add(lbl4)
         layout.Add(self._make_slider_row(
             "arch_blend", 0.0, 10.0, 3.0, 0.5,
-            "Blend fillet radius in mm (0 - 10)"
+            "Smoothing radius where the arch meets the base surface. "
+            "3mm = gentle blend, 0mm = sharp transition."
         ))
 
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Apply Arch"
-        btn.ToolTip = "Add medial arch support to the insole."
+        btn.ToolTip = (
+            "Build the arch support solid and merge it into the insole "
+            "using a boolean union. The insole on the OT_Insole layer "
+            "will update to include the arch."
+        )
         btn.Click += self._on_add_arch
         layout.Add(btn)
 
@@ -507,7 +565,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[3][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Heel Cup tab functionality."
+        desc.ToolTip = (
+            "Creates a U-shaped heel cup that wraps around the calcaneus. "
+            "Controls cup depth, wall angles, and lateral/medial flare "
+            "for rearfoot stability."
+        )
         layout.Add(desc)
 
         self._warn_heel_cup = self._make_warning_label()
@@ -517,54 +579,83 @@ class OrthoticPanel(ef.Panel):
 
         lbl1 = ef.Label()
         lbl1.Text = "Cup Depth (mm):"
-        lbl1.ToolTip = "Depth of the heel cup walls."
+        lbl1.ToolTip = (
+            "Vertical depth of the heel cup walls measured from the insole "
+            "base. 10-14mm for standard stability, 18-25mm for deep cups "
+            "used in rigid AFO-style orthotics."
+        )
         layout.Add(lbl1)
         layout.Add(self._make_slider_row(
             "cup_depth", 0.0, 30.0, 12.0, 0.5,
-            "Heel cup depth in mm (0 - 30)"
+            "Height of the heel cup walls. 10-14mm standard, "
+            "18-25mm deep stability cup."
         ))
 
         lbl2 = ef.Label()
         lbl2.Text = "Posterior Angle (deg):"
-        lbl2.ToolTip = "Angle of the posterior (back) wall."
+        lbl2.ToolTip = (
+            "Tilt angle of the back (posterior) wall of the heel cup. "
+            "90 = vertical wall, <90 = tilted inward for more heel grip, "
+            ">90 = flared outward for easier insertion."
+        )
         layout.Add(lbl2)
         layout.Add(self._make_slider_row(
             "posterior_angle", 60.0, 120.0, 90.0, 1.0,
-            "Posterior wall angle in degrees (60 - 120)", fmt="{:.0f}"
+            "Back wall angle. 90 = vertical, <90 = inward tilt, "
+            ">90 = outward flare.", fmt="{:.0f}"
         ))
 
         lbl3 = ef.Label()
         lbl3.Text = "Lateral Flare (deg):"
-        lbl3.ToolTip = "Outward flare angle of the lateral wall."
+        lbl3.ToolTip = (
+            "How much the outer (lateral) wall flares outward from vertical. "
+            "Higher values create a wider, more open cup on the outside "
+            "of the foot. 5-15 degrees is typical."
+        )
         layout.Add(lbl3)
         layout.Add(self._make_slider_row(
             "lateral_flare", 0.0, 30.0, 10.0, 1.0,
-            "Lateral flare angle in degrees (0 - 30)", fmt="{:.0f}"
+            "Outward flare of the lateral cup wall. "
+            "0 = vertical, 10 = moderate flare.", fmt="{:.0f}"
         ))
 
         lbl4 = ef.Label()
         lbl4.Text = "Medial Flare (deg):"
-        lbl4.ToolTip = "Outward flare angle of the medial wall."
+        lbl4.ToolTip = (
+            "How much the inner (medial) wall flares outward from vertical. "
+            "Higher values create a wider cup on the inside of the foot. "
+            "Often matched to lateral flare for symmetry."
+        )
         layout.Add(lbl4)
         layout.Add(self._make_slider_row(
             "medial_flare", 0.0, 30.0, 10.0, 1.0,
-            "Medial flare angle in degrees (0 - 30)", fmt="{:.0f}"
+            "Outward flare of the medial cup wall. "
+            "0 = vertical, 10 = moderate flare.", fmt="{:.0f}"
         ))
 
         lbl5 = ef.Label()
         lbl5.Text = "Cup Width (%):"
-        lbl5.ToolTip = "Cup width as percentage of heel width."
+        lbl5.ToolTip = (
+            "Cup width as a percentage of the detected heel width. "
+            "100% matches the heel exactly; >100% widens the cup, "
+            "<100% narrows it for a tighter grip."
+        )
         layout.Add(lbl5)
         layout.Add(self._make_slider_row(
             "cup_width_pct", 50.0, 150.0, 100.0, 5.0,
-            "Cup width percentage (50 - 150)", fmt="{:.0f}"
+            "Scale the cup width relative to heel width. "
+            "100% = exact match, 120% = wider cup.", fmt="{:.0f}"
         ))
 
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Apply Heel Cup"
-        btn.ToolTip = "Add heel cup to the insole."
+        btn.ToolTip = (
+            "Build the heel cup solid and merge it into the insole via "
+            "boolean union. The cup will appear around the rearmost 30% "
+            "of the insole outline."
+        )
         btn.Click += self._on_add_heelcup
         layout.Add(btn)
 
@@ -598,7 +689,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[4][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Forefoot tab functionality."
+        desc.ToolTip = (
+            "Adds metatarsal dome pads to the forefoot region of the insole. "
+            "Domes sit proximal to the metatarsal heads to redistribute "
+            "pressure and relieve metatarsalgia."
+        )
         layout.Add(desc)
 
         self._warn_forefoot = self._make_warning_label()
@@ -608,36 +703,55 @@ class OrthoticPanel(ef.Panel):
 
         lbl1 = ef.Label()
         lbl1.Text = "Dome Count:"
-        lbl1.ToolTip = "Number of metatarsal domes to add."
+        lbl1.ToolTip = (
+            "How many metatarsal domes to place across the forefoot. "
+            "1 = single central dome, 3-5 = individual domes under "
+            "each metatarsal head."
+        )
         layout.Add(lbl1)
         layout.Add(self._make_slider_row(
             "dome_count", 1, 5, 1, 1,
-            "Number of metatarsal domes (1 - 5)", fmt="{:.0f}"
+            "Number of domes spread across the forefoot width. "
+            "Positions are calculated automatically.", fmt="{:.0f}"
         ))
 
         lbl2 = ef.Label()
         lbl2.Text = "Dome Height (mm):"
-        lbl2.ToolTip = "Height of each metatarsal dome."
+        lbl2.ToolTip = (
+            "Peak height of each dome above the insole surface. "
+            "3-5mm for mild offloading, 8-12mm for aggressive "
+            "metatarsal head relief."
+        )
         layout.Add(lbl2)
         layout.Add(self._make_slider_row(
             "dome_height", 1.0, 15.0, 5.0, 0.5,
-            "Dome height in mm (1 - 15)"
+            "How high each dome rises from the insole surface. "
+            "3-5mm mild, 8-12mm aggressive offloading."
         ))
 
         lbl3 = ef.Label()
         lbl3.Text = "Dome Diameter (mm):"
-        lbl3.ToolTip = "Diameter of each metatarsal dome."
+        lbl3.ToolTip = (
+            "Footprint diameter of each hemisphere dome. Larger diameters "
+            "spread pressure over a wider area. 8-12mm for targeted relief, "
+            "15-25mm for broad support."
+        )
         layout.Add(lbl3)
         layout.Add(self._make_slider_row(
             "dome_diameter", 5.0, 30.0, 10.0, 0.5,
-            "Dome diameter in mm (5 - 30)"
+            "Base diameter of each dome. 8-12mm targeted, "
+            "15-25mm broad metatarsal pad."
         ))
 
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Apply Met Domes"
-        btn.ToolTip = "Add metatarsal dome pads to the forefoot region."
+        btn.ToolTip = (
+            "Build the metatarsal dome hemispheres and merge them into the "
+            "insole via boolean union. Domes are placed automatically in "
+            "the forefoot zone."
+        )
         btn.Click += self._on_add_metdome
         layout.Add(btn)
 
@@ -676,7 +790,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[5][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Posting tab functionality."
+        desc.ToolTip = (
+            "Adds angular wedges under the rearfoot and forefoot to correct "
+            "pronation or supination. Medial posting tilts the foot outward "
+            "(anti-pronation), lateral posting tilts inward."
+        )
         layout.Add(desc)
 
         self._warn_posting = self._make_warning_label()
@@ -686,54 +804,82 @@ class OrthoticPanel(ef.Panel):
 
         lbl1 = ef.Label()
         lbl1.Text = "RF Medial (deg):"
-        lbl1.ToolTip = "Rearfoot medial posting angle."
+        lbl1.ToolTip = (
+            "Medial tilt angle for the rearfoot wedge. Raises the inside "
+            "edge of the heel to correct overpronation. 2-6 degrees is "
+            "typical for mild to moderate correction."
+        )
         layout.Add(lbl1)
         layout.Add(self._make_slider_row(
             "rf_medial", 0.0, 15.0, 0.0, 0.5,
-            "Rearfoot medial posting angle (0 - 15)"
+            "Rearfoot medial posting. Tilts heel outward to control "
+            "pronation. 2-6 deg typical."
         ))
 
         lbl2 = ef.Label()
         lbl2.Text = "RF Lateral (deg):"
-        lbl2.ToolTip = "Rearfoot lateral posting angle."
+        lbl2.ToolTip = (
+            "Lateral tilt angle for the rearfoot wedge. Raises the outside "
+            "edge of the heel to correct supination. Less commonly used "
+            "than medial posting."
+        )
         layout.Add(lbl2)
         layout.Add(self._make_slider_row(
             "rf_lateral", 0.0, 15.0, 0.0, 0.5,
-            "Rearfoot lateral posting angle (0 - 15)"
+            "Rearfoot lateral posting. Tilts heel inward to control "
+            "supination. Rarely exceeds 4 deg."
         ))
 
         lbl3 = ef.Label()
         lbl3.Text = "FF Medial (deg):"
-        lbl3.ToolTip = "Forefoot medial posting angle."
+        lbl3.ToolTip = (
+            "Medial tilt angle for the forefoot wedge. Raises the inner "
+            "edge of the forefoot to address forefoot varus. 2-4 degrees "
+            "is a common prescription."
+        )
         layout.Add(lbl3)
         layout.Add(self._make_slider_row(
             "ff_medial", 0.0, 15.0, 0.0, 0.5,
-            "Forefoot medial posting angle (0 - 15)"
+            "Forefoot medial posting. Raises inside edge to correct "
+            "forefoot varus."
         ))
 
         lbl4 = ef.Label()
         lbl4.Text = "FF Lateral (deg):"
-        lbl4.ToolTip = "Forefoot lateral posting angle."
+        lbl4.ToolTip = (
+            "Lateral tilt angle for the forefoot wedge. Raises the outer "
+            "edge of the forefoot to address forefoot valgus."
+        )
         layout.Add(lbl4)
         layout.Add(self._make_slider_row(
             "ff_lateral", 0.0, 15.0, 0.0, 0.5,
-            "Forefoot lateral posting angle (0 - 15)"
+            "Forefoot lateral posting. Raises outside edge to correct "
+            "forefoot valgus."
         ))
 
         lbl5 = ef.Label()
         lbl5.Text = "RF/FF Split (%):"
-        lbl5.ToolTip = "Rearfoot/forefoot split position as percentage."
+        lbl5.ToolTip = (
+            "Where the insole divides into rearfoot and forefoot regions, "
+            "as a percentage from heel to toe. 50% = midfoot split, "
+            "40% = longer forefoot zone, 60% = longer rearfoot zone."
+        )
         layout.Add(lbl5)
         layout.Add(self._make_slider_row(
             "split_pct", 30.0, 70.0, 50.0, 1.0,
-            "RF/FF split percentage (30 - 70)", fmt="{:.0f}"
+            "Dividing line between rearfoot and forefoot posting zones. "
+            "50% = midfoot.", fmt="{:.0f}"
         ))
 
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Apply Posting"
-        btn.ToolTip = "Add rearfoot and forefoot posting wedges."
+        btn.ToolTip = (
+            "Build angular wedge solids for the rearfoot and forefoot zones "
+            "and merge them into the insole. Wedges with 0-degree angles "
+            "are skipped."
+        )
         btn.Click += self._on_add_posting
         layout.Add(btn)
 
@@ -767,7 +913,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[6][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Thickness tab functionality."
+        desc.ToolTip = (
+            "Splits the insole into three material layers: a soft top cover, "
+            "a rigid structural shell, and a cushioning base. Each layer "
+            "becomes a separate Brep for multi-material manufacturing."
+        )
         layout.Add(desc)
 
         self._warn_thickness = self._make_warning_label()
@@ -790,7 +940,10 @@ class OrthoticPanel(ef.Panel):
         self._cover_stepper.Increment = 0.5
         self._cover_stepper.DecimalPlaces = 1
         self._cover_stepper.Value = 2.0
-        self._cover_stepper.ToolTip = "Cover layer thickness in mm (0.5 - 4.0)"
+        self._cover_stepper.ToolTip = (
+            "Top cover layer that contacts the foot. Use 1.5-2.5mm for "
+            "standard EVA or leather top covers."
+        )
         self._cover_stepper.ValueChanged += self._on_thickness_changed
         layout.Add(self._cover_stepper)
 
@@ -809,7 +962,10 @@ class OrthoticPanel(ef.Panel):
         self._shell_stepper.Increment = 0.5
         self._shell_stepper.DecimalPlaces = 1
         self._shell_stepper.Value = 3.0
-        self._shell_stepper.ToolTip = "Shell layer thickness in mm (1.0 - 6.0)"
+        self._shell_stepper.ToolTip = (
+            "Rigid structural shell that provides arch support stiffness. "
+            "2-4mm for flexible, 4-6mm for rigid polypropylene-style control."
+        )
         self._shell_stepper.ValueChanged += self._on_thickness_changed
         layout.Add(self._shell_stepper)
 
@@ -828,7 +984,10 @@ class OrthoticPanel(ef.Panel):
         self._base_stepper.Increment = 0.5
         self._base_stepper.DecimalPlaces = 1
         self._base_stepper.Value = 5.0
-        self._base_stepper.ToolTip = "Base layer thickness in mm (1.0 - 8.0)"
+        self._base_stepper.ToolTip = (
+            "Bottom cushioning layer that absorbs shock. 3-5mm for EVA "
+            "milling, 5-8mm for maximum cushion in athletic orthotics."
+        )
         self._base_stepper.ValueChanged += self._on_thickness_changed
         layout.Add(self._base_stepper)
 
@@ -919,7 +1078,11 @@ class OrthoticPanel(ef.Panel):
         desc = ef.Label()
         desc.Text = TAB_DEFINITIONS[7][1]
         desc.Wrap = ef.WrapMode.Word
-        desc.ToolTip = "Description of the Export tab functionality."
+        desc.ToolTip = (
+            "Final step: validate the insole geometry and export it for "
+            "manufacturing. Choose STL for 3D printing, STEP for CNC "
+            "milling, or 3DM to preserve NURBS data."
+        )
         layout.Add(desc)
 
         self._warn_export = self._make_warning_label()
@@ -930,7 +1093,11 @@ class OrthoticPanel(ef.Panel):
         # Format dropdown
         lbl1 = ef.Label()
         lbl1.Text = "Export Format:"
-        lbl1.ToolTip = "Select the file format for export."
+        lbl1.ToolTip = (
+            "Choose the output file format. STL for 3D printing, "
+            "STEP for CNC or CAD interchange, OBJ for rendering, "
+            "3DM to keep full NURBS data."
+        )
         layout.Add(lbl1)
 
         self._format_dropdown = ef.DropDown()
@@ -992,7 +1159,11 @@ class OrthoticPanel(ef.Panel):
         # Export mode radio buttons
         lbl3 = ef.Label()
         lbl3.Text = "Export Mode:"
-        lbl3.ToolTip = "Choose whether to export as a single piece or separate layers."
+        lbl3.ToolTip = (
+            "Single piece combines all layers into one file. By layer "
+            "creates separate files for cover, shell, and base -- useful "
+            "for bilayer EVA milling or multi-material printing."
+        )
         layout.Add(lbl3)
 
         self._export_single_radio = ef.RadioButton()
@@ -1112,7 +1283,7 @@ class OrthoticPanel(ef.Panel):
         separator = ef.Label()
         separator.Text = "─" * 40
         separator.TextColor = ed.Colors.Gray
-        separator.ToolTip = "Status bar separator"
+        separator.ToolTip = "Divider between the tool tabs and the status area."
         status_layout.Add(separator)
 
         # Active Last label

@@ -20,22 +20,11 @@ from geometry import mesh_utils
 
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_PLANTAR_LAYER = "OT_PlantarSurface"
-PLANTAR_COLOR = System.Drawing.Color.FromArgb(255, 165, 0)  # Orange
+from geometry.layer_utils import ensure_layer
 
 GRID_U = 40
 GRID_V = 20
 SURFACE_DEGREE = 3
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 def _get_smoothing_passes():
@@ -255,7 +244,7 @@ class OT_ExtractPlantar(rc.Command):
         state.insole_top_surface = brep if brep is not None else surface
 
         # Add to document on OT_PlantarSurface layer
-        layer_index = _ensure_layer(OT_PLANTAR_LAYER, PLANTAR_COLOR)
+        layer_index = ensure_layer(OT_PLANTAR_LAYER)
         attrs = rd.ObjectAttributes()
         attrs.LayerIndex = layer_index
         attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer

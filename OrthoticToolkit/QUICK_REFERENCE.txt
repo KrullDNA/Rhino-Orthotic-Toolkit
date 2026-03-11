@@ -1,0 +1,71 @@
+========================================================
+  ORTHOTIC TOOLKIT v1.0 - Quick Reference Card
+========================================================
+
+COMMAND              DESCRIPTION
+-------------------  -----------------------------------
+OT_SetLast           Select a shoe last polysurface and
+                     detect the sole face for insole design
+
+OT_ImportScan        Import a foot scan mesh from STL,
+                     OBJ, or PLY file
+
+OT_OrientScan        Auto-rotate the scan so the plantar
+                     surface faces downward (-Z)
+
+OT_ExtractPlantar    Extract a NURBS plantar surface from
+                     the foot scan using ray-grid sampling
+
+OT_GenerateOutline   Create the insole outline curve and
+                     initial flat Brep from the footprint
+
+OT_AddArch           Add medial arch support with height,
+                     apex, width, and blend controls
+
+OT_AddHeelCup        Add a U-shaped heel cup with depth,
+                     angle, and flare controls
+
+OT_AddMetDome        Add metatarsal dome pads to the
+                     forefoot for pressure redistribution
+
+OT_AddPosting        Add rearfoot and forefoot angular
+                     wedges for pronation/supination control
+
+OT_SetThickness      Build cover, shell, and base thickness
+                     layers and check minimum thickness
+
+OT_ValidateInsole    Run full validation (validity, solid,
+                     thickness, overhangs) with report
+
+OT_RockerOutline     Create a 2D rocker-bottom contact
+                     outline curve on OT_RockerContact layer
+
+OT_ExportInsole      Validate and export as STL, STEP, OBJ,
+                     or 3DM with resolution and layer options
+
+OT_ResetAll          Clear all plugin state and remove all
+                     OT_ layer objects from the document
+
+
+TYPICAL WORKFLOW ORDER
+----------------------
+1. OT_SetLast          6. OT_AddArch
+2. OT_ImportScan       7. OT_AddHeelCup
+3. OT_OrientScan       8. OT_AddMetDome
+4. OT_ExtractPlantar   9. OT_AddPosting
+5. OT_GenerateOutline 10. OT_SetThickness
+                      11. OT_ValidateInsole
+                      12. OT_ExportInsole
+
+
+LAYER NAMES
+-----------
+OT_Preview          Green footprint preview curve
+OT_FootScan         Imported foot scan mesh
+OT_PlantarSurface   Extracted NURBS plantar surface
+OT_Outline          Insole outline curve
+OT_Insole           Main insole solid Brep
+OT_Warnings         Red thin-point cloud warnings
+OT_RockerContact    Rocker contact outline curve
+
+========================================================

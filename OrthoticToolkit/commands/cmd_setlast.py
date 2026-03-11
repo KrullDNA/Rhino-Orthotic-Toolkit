@@ -18,22 +18,11 @@ import scriptcontext as sc
 
 import state
 from geometry import surface_utils
+from geometry.layer_utils import ensure_layer
 
 
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_PREVIEW_LAYER = "OT_Preview"
-PREVIEW_COLOR = System.Drawing.Color.FromArgb(0, 180, 0)  # Green
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 def _find_sole_face(brep):
@@ -213,7 +202,7 @@ class OT_SetLast(rc.Command):
         state.preview_object_ids = []
 
         # Add green footprint preview to OT_Preview layer
-        layer_index = _ensure_layer(OT_PREVIEW_LAYER, PREVIEW_COLOR)
+        layer_index = ensure_layer(OT_PREVIEW_LAYER)
 
         attrs = rd.ObjectAttributes()
         attrs.LayerIndex = layer_index

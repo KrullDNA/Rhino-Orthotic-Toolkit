@@ -15,24 +15,12 @@ import Eto.Forms as ef
 import scriptcontext as sc
 
 import state
+from geometry.layer_utils import ensure_layer
 
 
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_OUTLINE_LAYER = "OT_Outline"
 OT_INSOLE_LAYER = "OT_Insole"
-OUTLINE_COLOR = System.Drawing.Color.FromArgb(0, 120, 215)    # Blue
-INSOLE_COLOR = System.Drawing.Color.FromArgb(180, 180, 180)   # Gray
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 def _get_panel_values():
@@ -182,14 +170,14 @@ class OT_GenerateOutline(rc.Command):
         state.insole_brep = insole_brep
 
         # Add outline to OT_Outline layer
-        outline_layer = _ensure_layer(OT_OUTLINE_LAYER, OUTLINE_COLOR)
+        outline_layer = ensure_layer(OT_OUTLINE_LAYER)
         attrs = rd.ObjectAttributes()
         attrs.LayerIndex = outline_layer
         attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
         doc.Objects.AddCurve(outline, attrs)
 
         # Add insole Brep to OT_Insole layer
-        insole_layer = _ensure_layer(OT_INSOLE_LAYER, INSOLE_COLOR)
+        insole_layer = ensure_layer(OT_INSOLE_LAYER)
         attrs2 = rd.ObjectAttributes()
         attrs2.LayerIndex = insole_layer
         attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer

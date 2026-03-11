@@ -17,25 +17,13 @@ import scriptcontext as sc
 
 import state
 from geometry import brep_utils
+from geometry.layer_utils import ensure_layer
 
 
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_INSOLE_LAYER = "OT_Insole"
 OT_WARNINGS_LAYER = "OT_Warnings"
-WARNINGS_COLOR = System.Drawing.Color.FromArgb(220, 0, 0)
-INSOLE_COLOR = System.Drawing.Color.FromArgb(180, 180, 180)
 MIN_THICKNESS_MM = 2.0
-
-
-def _ensure_layer(name, color):
-    """Create a layer if it does not exist; return its index."""
-    layer_index = sc.doc.Layers.FindByFullPath(name, -1)
-    if layer_index < 0:
-        layer = rd.Layer()
-        layer.Name = name
-        layer.Color = color
-        layer_index = sc.doc.Layers.Add(layer)
-    return layer_index
 
 
 def _get_panel_values():
@@ -85,7 +73,7 @@ def _update_insole_layer(doc, new_brep):
         for obj in doc.Objects.GetObjectList(settings):
             doc.Objects.Replace(obj.Id, new_brep)
             return
-    layer_index = _ensure_layer(OT_INSOLE_LAYER, INSOLE_COLOR)
+    layer_index = ensure_layer(OT_INSOLE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = layer_index
     attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
@@ -340,7 +328,7 @@ class OT_SetThickness(rc.Command):
             )
 
             # Add red point cloud on OT_Warnings layer
-            warn_layer = _ensure_layer(OT_WARNINGS_LAYER, WARNINGS_COLOR)
+            warn_layer = ensure_layer(OT_WARNINGS_LAYER)
 
             # Clear previous warnings
             settings = rd.ObjectEnumeratorSettings()
