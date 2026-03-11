@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RhinoUI major_ver="2" minor_ver="0">
+  <extend_rhino_menus />
+  <menus />
+  <tool_bar_group name="Orthotic Toolkit"
+                  dock_bar_id32=""
+                  dock_bar_id64="">
+    <tool_bar name="Orthotic Toolkit" />
+  </tool_bar_group>
+  <tool_bar name="Orthotic Toolkit"
+            left_size="24"
+            right_size="24">
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_ResetAll)]]>
+        </macro>
+        <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
+        <button_text>OT_ResetAll</button_text>
+      </left_macro>
+      <right_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_ResetAll)]]>
+        </macro>
+        <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
+        <button_text>OT_ResetAll</button_text>
+      </right_macro>
+    </tool_bar_item>
+  </tool_bar>
+  <macros>
+    <macro_item name="OT_ResetAll">
+      <macro>
+        <![CDATA[! _-RunScript (OT_ResetAll)]]>
+      </macro>
+      <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
+      <button_text>OT_ResetAll</button_text>
+    </macro_item>
+  </macros>
+</RhinoUI>
