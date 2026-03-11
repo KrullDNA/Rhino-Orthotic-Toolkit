@@ -72,7 +72,13 @@ class OrthoticPanel(ef.Panel):
 
         # Tab control with all eight tabs
         self._tab_control = ef.TabControl()
-        for title, description in TAB_DEFINITIONS:
+
+        # First tab is Foot Scan -- built with full controls
+        foot_scan_page = self._create_foot_scan_tab()
+        self._tab_control.Pages.Add(foot_scan_page)
+
+        # Remaining tabs use placeholder stubs
+        for title, description in TAB_DEFINITIONS[1:]:
             page = self._create_tab_page(title, description)
             self._tab_control.Pages.Add(page)
 
@@ -83,6 +89,163 @@ class OrthoticPanel(ef.Panel):
         main_layout.Add(status_layout)
 
         self.Content = main_layout
+
+    def _create_foot_scan_tab(self):
+        """Create the Foot Scan tab with full controls."""
+        page = ef.TabPage()
+        page.Text = "Foot Scan"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        # Description
+        desc_label = ef.Label()
+        desc_label.Text = (
+            "Import and prepare a foot scan mesh. Orient the scan and "
+            "extract the plantar surface for insole design."
+        )
+        desc_label.Wrap = ef.WrapMode.Word
+        desc_label.ToolTip = "Description of the Foot Scan tab functionality."
+        layout.Add(desc_label)
+
+        layout.AddSpace()
+
+        # Import Scan button
+        btn_import = ef.Button()
+        btn_import.Text = "Import Scan..."
+        btn_import.ToolTip = (
+            "Open a file dialog to import a foot scan mesh from "
+            "STL, OBJ, or PLY format."
+        )
+        btn_import.Click += self._on_import_scan_click
+        layout.Add(btn_import)
+
+        layout.AddSpace()
+
+        # Orientation preset dropdown
+        orient_label = ef.Label()
+        orient_label.Text = "Orientation Preset:"
+        orient_label.ToolTip = "Choose how the scan was oriented by the scanner."
+        layout.Add(orient_label)
+
+        self._orient_dropdown = ef.DropDown()
+        self._orient_dropdown.Items.Add(ef.ListItem(Text="Scanner Default", Key="default"))
+        self._orient_dropdown.Items.Add(ef.ListItem(Text="Rotated 90 X", Key="rot90x"))
+        self._orient_dropdown.Items.Add(ef.ListItem(Text="Rotated 180 Z", Key="rot180z"))
+        self._orient_dropdown.SelectedIndex = 0
+        self._orient_dropdown.ToolTip = (
+            "Select the orientation preset that matches your scanner's "
+            "default output orientation."
+        )
+        layout.Add(self._orient_dropdown)
+
+        # Auto-Orient button
+        btn_orient = ef.Button()
+        btn_orient.Text = "Auto-Orient"
+        btn_orient.ToolTip = (
+            "Automatically rotate the foot scan mesh so the plantar "
+            "(sole) surface faces downward (-Z direction)."
+        )
+        btn_orient.Click += self._on_orient_scan_click
+        layout.Add(btn_orient)
+
+        layout.AddSpace()
+
+        # Smoothing slider
+        smooth_label = ef.Label()
+        smooth_label.Text = "Smoothing Passes:"
+        smooth_label.ToolTip = (
+            "Number of Laplacian smoothing passes to apply before "
+            "extracting the plantar surface. Higher values produce "
+            "smoother but less detailed surfaces."
+        )
+        layout.Add(smooth_label)
+
+        smooth_row = ef.DynamicLayout()
+        smooth_row.DefaultSpacing = ed.Size(5, 0)
+
+        self._smooth_slider = ef.Slider()
+        self._smooth_slider.MinValue = 0
+        self._smooth_slider.MaxValue = 5
+        self._smooth_slider.Value = 2
+        self._smooth_slider.ToolTip = "Smoothing passes (0 = none, 5 = maximum)"
+        self._smooth_slider.ValueChanged += self._on_smooth_changed
+
+        self._smooth_value_label = ef.Label()
+        self._smooth_value_label.Text = "2"
+        self._smooth_value_label.ToolTip = "Current smoothing passes value"
+
+        smooth_row.BeginHorizontal()
+        smooth_row.Add(self._smooth_slider, xscale=True)
+        smooth_row.Add(self._smooth_value_label)
+        smooth_row.EndHorizontal()
+        layout.Add(smooth_row)
+
+        layout.AddSpace()
+
+        # Extract Plantar Surface button
+        btn_extract = ef.Button()
+        btn_extract.Text = "Extract Plantar Surface"
+        btn_extract.ToolTip = (
+            "Extract a NURBS surface from the plantar (bottom) region "
+            "of the foot scan mesh using ray-grid intersection."
+        )
+        btn_extract.Click += self._on_extract_plantar_click
+        layout.Add(btn_extract)
+
+        layout.AddSpace()
+
+        # Extraction result status label (read-only)
+        self._extraction_label = ef.Label()
+        self._extraction_label.Text = "Extraction: Not run"
+        self._extraction_label.ToolTip = (
+            "Shows the result of the last plantar surface extraction."
+        )
+        layout.Add(self._extraction_label)
+
+        layout.AddSpace()
+
+        page.Content = layout
+        return page
+
+    def _on_import_scan_click(self, sender, e):
+        """Handle Import Scan button click."""
+        Rhino.RhinoApp.RunScript("OT_ImportScan", False)
+        import state
+        if state.foot_scan_filename:
+            self.update_scan_label(state.foot_scan_filename)
+
+    def _on_orient_scan_click(self, sender, e):
+        """Handle Auto-Orient button click."""
+        Rhino.RhinoApp.RunScript("OT_OrientScan", False)
+
+    def _on_smooth_changed(self, sender, e):
+        """Update the smoothing value display label."""
+        self._smooth_value_label.Text = str(self._smooth_slider.Value)
+
+    def _on_extract_plantar_click(self, sender, e):
+        """Handle Extract Plantar Surface button click."""
+        Rhino.RhinoApp.RunScript("OT_ExtractPlantar", False)
+        import state
+        if state.insole_top_surface is not None:
+            self._extraction_label.Text = "Extraction: Success"
+            self._extraction_label.TextColor = ed.SystemColors.ControlText
+        else:
+            self._extraction_label.Text = "Extraction: Failed"
+            self._extraction_label.TextColor = ed.Color.FromArgb(220, 0, 0)
+
+    def get_smoothing_passes(self):
+        """Return the current smoothing slider value."""
+        try:
+            return self._smooth_slider.Value
+        except Exception:
+            return 2
+
+    def update_extraction_label(self, message):
+        """Update the extraction result status label."""
+        self._extraction_label.Text = "Extraction: {}".format(message)
+        self._extraction_label.TextColor = ed.SystemColors.ControlText
 
     def _create_tab_page(self, title, description):
         """Create a single tab page with description label and placeholder button."""

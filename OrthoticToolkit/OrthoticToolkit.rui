@@ -30,6 +30,55 @@
     <tool_bar_item type="normal">
       <left_macro>
         <macro>
+          <![CDATA[! _-RunScript (OT_ImportScan)]]>
+        </macro>
+        <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
+        <button_text>OT_ImportScan</button_text>
+      </left_macro>
+      <right_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_ImportScan)]]>
+        </macro>
+        <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
+        <button_text>OT_ImportScan</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_OrientScan)]]>
+        </macro>
+        <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
+        <button_text>OT_OrientScan</button_text>
+      </left_macro>
+      <right_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_OrientScan)]]>
+        </macro>
+        <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
+        <button_text>OT_OrientScan</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
+        </macro>
+        <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
+        <button_text>OT_ExtractPlantar</button_text>
+      </left_macro>
+      <right_macro>
+        <macro>
+          <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
+        </macro>
+        <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
+        <button_text>OT_ExtractPlantar</button_text>
+      </right_macro>
+    </tool_bar_item>
+    <tool_bar_item type="separator" />
+    <tool_bar_item type="normal">
+      <left_macro>
+        <macro>
           <![CDATA[! _-RunScript (OT_ResetAll)]]>
         </macro>
         <tooltip>Reset All - Clears all Orthotic Toolkit state and resets the panel</tooltip>
@@ -51,6 +100,27 @@
       </macro>
       <tooltip>Select Last - Pick a shoe last polysurface to begin insole design</tooltip>
       <button_text>OT_SetLast</button_text>
+    </macro_item>
+    <macro_item name="OT_ImportScan">
+      <macro>
+        <![CDATA[! _-RunScript (OT_ImportScan)]]>
+      </macro>
+      <tooltip>Import Scan - Import a foot scan mesh from STL, OBJ, or PLY</tooltip>
+      <button_text>OT_ImportScan</button_text>
+    </macro_item>
+    <macro_item name="OT_OrientScan">
+      <macro>
+        <![CDATA[! _-RunScript (OT_OrientScan)]]>
+      </macro>
+      <tooltip>Orient Scan - Auto-orient the foot scan mesh plantar-down</tooltip>
+      <button_text>OT_OrientScan</button_text>
+    </macro_item>
+    <macro_item name="OT_ExtractPlantar">
+      <macro>
+        <![CDATA[! _-RunScript (OT_ExtractPlantar)]]>
+      </macro>
+      <tooltip>Extract Plantar - Extract a NURBS plantar surface from the foot scan</tooltip>
+      <button_text>OT_ExtractPlantar</button_text>
     </macro_item>
     <macro_item name="OT_ResetAll">
       <macro>

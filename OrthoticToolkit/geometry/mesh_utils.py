@@ -9,6 +9,106 @@ as a fallback path in surface_utils.py.
 import Rhino.Geometry as rg
 
 
+def apply_laplacian_smoothing(mesh, passes):
+    """Apply iterative Laplacian smoothing to a mesh.
+
+    Each pass sets every vertex position to the average of its
+    topological neighbours. Uses mesh.TopologyVertices for neighbour
+    lookup.
+
+    Args:
+        mesh: A Mesh object to smooth.
+        passes: Number of smoothing iterations (0-5 typical).
+
+    Returns:
+        A new smoothed Mesh, or the original mesh if passes <= 0.
+    """
+    if mesh is None or passes <= 0:
+        return mesh
+
+    smoothed = mesh.DuplicateMesh()
+    topo = smoothed.TopologyVertices
+
+    for _ in range(passes):
+        new_positions = []
+        for vi in range(topo.Count):
+            neighbours = topo.ConnectedTopologyVertices(vi)
+            if neighbours is None or len(neighbours) == 0:
+                new_positions.append(topo[vi])
+                continue
+            avg = rg.Point3f(0, 0, 0)
+            for ni in neighbours:
+                pt = topo[ni]
+                avg.X += pt.X
+                avg.Y += pt.Y
+                avg.Z += pt.Z
+            count = len(neighbours)
+            avg.X /= count
+            avg.Y /= count
+            avg.Z /= count
+            new_positions.append(avg)
+
+        for vi in range(topo.Count):
+            topo[vi] = new_positions[vi]
+
+    smoothed.Normals.ComputeNormals()
+    smoothed.FaceNormals.ComputeFaceNormals()
+    return smoothed
+
+
+def validate_mesh_for_extraction(mesh):
+    """Validate that a mesh is suitable for plantar surface extraction.
+
+    Checks that the mesh has faces, is not empty, and has no
+    degenerate faces (faces with zero area).
+
+    Args:
+        mesh: A Mesh object to validate.
+
+    Returns:
+        A tuple (is_valid, message) where is_valid is True if the mesh
+        passes all checks, and message describes any issue found.
+    """
+    if mesh is None:
+        return False, "Mesh is None."
+
+    if mesh.Vertices.Count == 0:
+        return False, "Mesh has no vertices."
+
+    if mesh.Faces.Count == 0:
+        return False, "Mesh has no faces."
+
+    # Check for degenerate faces (zero area)
+    degenerate_count = 0
+    for i in range(mesh.Faces.Count):
+        face = mesh.Faces[i]
+        v0 = mesh.Vertices[face.A]
+        v1 = mesh.Vertices[face.B]
+        v2 = mesh.Vertices[face.C]
+        edge1 = rg.Vector3f(v1.X - v0.X, v1.Y - v0.Y, v1.Z - v0.Z)
+        edge2 = rg.Vector3f(v2.X - v0.X, v2.Y - v0.Y, v2.Z - v0.Z)
+        cross = rg.Vector3f(
+            edge1.Y * edge2.Z - edge1.Z * edge2.Y,
+            edge1.Z * edge2.X - edge1.X * edge2.Z,
+            edge1.X * edge2.Y - edge1.Y * edge2.X,
+        )
+        area = (cross.X ** 2 + cross.Y ** 2 + cross.Z ** 2) ** 0.5
+        if area < 1e-12:
+            degenerate_count += 1
+
+    if degenerate_count > 0:
+        ratio = degenerate_count / mesh.Faces.Count
+        if ratio > 0.5:
+            return False, (
+                "Mesh has {} degenerate faces out of {} total ({:.0f}%). "
+                "Too many degenerate faces for extraction.".format(
+                    degenerate_count, mesh.Faces.Count, ratio * 100
+                )
+            )
+
+    return True, "Mesh is valid for extraction."
+
+
 def orient_mesh_plantar_down(mesh):
     """Rotate a foot scan mesh so the plantar (sole) surface faces -Z.
 
