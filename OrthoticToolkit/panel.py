@@ -93,10 +93,12 @@ class OrthoticPanel(ef.Panel):
         posting_page = self._create_posting_tab()
         self._tab_control.Pages.Add(posting_page)
 
-        # Remaining tabs (Thickness, Export) still use placeholder stubs
-        for title, description in TAB_DEFINITIONS[6:]:
-            page = self._create_tab_page(title, description)
-            self._tab_control.Pages.Add(page)
+        # Session 5 tabs: Thickness, Export
+        thickness_page = self._create_thickness_tab()
+        self._tab_control.Pages.Add(thickness_page)
+
+        export_page = self._create_export_tab()
+        self._tab_control.Pages.Add(export_page)
 
         main_layout.Add(self._tab_control, yscale=True)
 
@@ -751,6 +753,321 @@ class OrthoticPanel(ef.Panel):
             self._get_slider_value("ff_lateral") or 0.0,
             self._get_slider_value("split_pct") or 50.0,
         )
+
+    # --- Thickness tab ---
+
+    def _create_thickness_tab(self):
+        page = ef.TabPage()
+        page.Text = "Thickness"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[6][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Thickness tab functionality."
+        layout.Add(desc)
+
+        self._warn_thickness = self._make_warning_label()
+        layout.Add(self._warn_thickness)
+
+        layout.AddSpace()
+
+        # Cover thickness
+        lbl1 = ef.Label()
+        lbl1.Text = "Cover Thickness (mm):"
+        lbl1.ToolTip = (
+            "Thickness of the top cover layer. Typically 1.5-2.5mm "
+            "for a cushioning top cover material."
+        )
+        layout.Add(lbl1)
+
+        self._cover_stepper = ef.NumericStepper()
+        self._cover_stepper.MinValue = 0.5
+        self._cover_stepper.MaxValue = 4.0
+        self._cover_stepper.Increment = 0.5
+        self._cover_stepper.DecimalPlaces = 1
+        self._cover_stepper.Value = 2.0
+        self._cover_stepper.ToolTip = "Cover layer thickness in mm (0.5 - 4.0)"
+        self._cover_stepper.ValueChanged += self._on_thickness_changed
+        layout.Add(self._cover_stepper)
+
+        # Shell thickness
+        lbl2 = ef.Label()
+        lbl2.Text = "Shell Thickness (mm):"
+        lbl2.ToolTip = (
+            "Thickness of the rigid shell layer. Controls arch support "
+            "stiffness. 2-4mm for flexible, 4-6mm for rigid."
+        )
+        layout.Add(lbl2)
+
+        self._shell_stepper = ef.NumericStepper()
+        self._shell_stepper.MinValue = 1.0
+        self._shell_stepper.MaxValue = 6.0
+        self._shell_stepper.Increment = 0.5
+        self._shell_stepper.DecimalPlaces = 1
+        self._shell_stepper.Value = 3.0
+        self._shell_stepper.ToolTip = "Shell layer thickness in mm (1.0 - 6.0)"
+        self._shell_stepper.ValueChanged += self._on_thickness_changed
+        layout.Add(self._shell_stepper)
+
+        # Base thickness
+        lbl3 = ef.Label()
+        lbl3.Text = "Base Thickness (mm):"
+        lbl3.ToolTip = (
+            "Thickness of the bottom base layer. Provides cushioning "
+            "and shock absorption. 3-8mm typical range."
+        )
+        layout.Add(lbl3)
+
+        self._base_stepper = ef.NumericStepper()
+        self._base_stepper.MinValue = 1.0
+        self._base_stepper.MaxValue = 8.0
+        self._base_stepper.Increment = 0.5
+        self._base_stepper.DecimalPlaces = 1
+        self._base_stepper.Value = 5.0
+        self._base_stepper.ToolTip = "Base layer thickness in mm (1.0 - 8.0)"
+        self._base_stepper.ValueChanged += self._on_thickness_changed
+        layout.Add(self._base_stepper)
+
+        layout.AddSpace()
+
+        # Total thickness read-only label
+        self._total_thickness_label = ef.Label()
+        self._total_thickness_label.Text = "Total: 10.0mm"
+        self._total_thickness_label.Font = ed.SystemFonts.Bold()
+        self._total_thickness_label.ToolTip = (
+            "Combined thickness of all three layers. "
+            "Typical insoles range from 6mm to 15mm total."
+        )
+        layout.Add(self._total_thickness_label)
+
+        layout.AddSpace()
+
+        # Apply Thickness button
+        btn_apply = ef.Button()
+        btn_apply.Text = "Apply Thickness"
+        btn_apply.ToolTip = (
+            "Build the three thickness layers (cover, shell, base) "
+            "and check for minimum thickness violations."
+        )
+        btn_apply.Click += self._on_apply_thickness
+        layout.Add(btn_apply)
+
+        # Run Validation button
+        btn_validate = ef.Button()
+        btn_validate.Text = "Run Validation"
+        btn_validate.ToolTip = (
+            "Run a full validation check on the insole Brep. "
+            "Checks validity, solidity, thickness, and overhangs."
+        )
+        btn_validate.Click += self._on_run_validation
+        layout.Add(btn_validate)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_thickness_changed(self, sender, e):
+        """Update the total thickness label when any stepper changes."""
+        try:
+            total = (
+                self._cover_stepper.Value
+                + self._shell_stepper.Value
+                + self._base_stepper.Value
+            )
+            self._total_thickness_label.Text = "Total: {:.1f}mm".format(total)
+        except Exception:
+            pass
+
+    def _on_apply_thickness(self, sender, e):
+        self._clear_tab_warning("Thickness")
+        Rhino.RhinoApp.RunScript("OT_SetThickness", False)
+
+    def _on_run_validation(self, sender, e):
+        Rhino.RhinoApp.RunScript("OT_ValidateInsole", False)
+
+    def get_thickness_params(self):
+        try:
+            return (
+                self._cover_stepper.Value,
+                self._shell_stepper.Value,
+                self._base_stepper.Value,
+            )
+        except Exception:
+            return 2.0, 3.0, 5.0
+
+    def update_total_thickness(self, total):
+        """Update the total thickness label externally."""
+        try:
+            self._total_thickness_label.Text = "Total: {:.1f}mm".format(total)
+        except Exception:
+            pass
+
+    # --- Export tab ---
+
+    def _create_export_tab(self):
+        page = ef.TabPage()
+        page.Text = "Export"
+
+        layout = ef.DynamicLayout()
+        layout.DefaultSpacing = ed.Size(5, 5)
+        layout.DefaultPadding = ed.Padding(8)
+
+        desc = ef.Label()
+        desc.Text = TAB_DEFINITIONS[7][1]
+        desc.Wrap = ef.WrapMode.Word
+        desc.ToolTip = "Description of the Export tab functionality."
+        layout.Add(desc)
+
+        self._warn_export = self._make_warning_label()
+        layout.Add(self._warn_export)
+
+        layout.AddSpace()
+
+        # Format dropdown
+        lbl1 = ef.Label()
+        lbl1.Text = "Export Format:"
+        lbl1.ToolTip = "Select the file format for export."
+        layout.Add(lbl1)
+
+        self._format_dropdown = ef.DropDown()
+        self._format_dropdown.Items.Add(
+            ef.ListItem(Text="STL", Key="STL")
+        )
+        self._format_dropdown.Items.Add(
+            ef.ListItem(Text="STEP", Key="STEP")
+        )
+        self._format_dropdown.Items.Add(
+            ef.ListItem(Text="OBJ", Key="OBJ")
+        )
+        self._format_dropdown.Items.Add(
+            ef.ListItem(Text="3DM", Key="3DM")
+        )
+        self._format_dropdown.SelectedIndex = 0
+        self._format_dropdown.ToolTip = (
+            "STL: Universal mesh format for 3D printing. "
+            "STEP: Solid format for CNC and CAD interchange. "
+            "OBJ: Mesh format with material support. "
+            "3DM: Native Rhino format preserving NURBS data."
+        )
+        layout.Add(self._format_dropdown)
+
+        layout.AddSpace()
+
+        # Mesh resolution dropdown
+        lbl2 = ef.Label()
+        lbl2.Text = "Mesh Resolution:"
+        lbl2.ToolTip = (
+            "Controls mesh density for STL/OBJ export. "
+            "Higher resolution = larger file, smoother surfaces."
+        )
+        layout.Add(lbl2)
+
+        self._resolution_dropdown = ef.DropDown()
+        self._resolution_dropdown.Items.Add(
+            ef.ListItem(Text="Draft (0.5mm)", Key="0.5")
+        )
+        self._resolution_dropdown.Items.Add(
+            ef.ListItem(Text="Standard (0.2mm)", Key="0.2")
+        )
+        self._resolution_dropdown.Items.Add(
+            ef.ListItem(Text="Fine (0.1mm)", Key="0.1")
+        )
+        self._resolution_dropdown.Items.Add(
+            ef.ListItem(Text="Ultra (0.05mm)", Key="0.05")
+        )
+        self._resolution_dropdown.SelectedIndex = 2  # Fine by default
+        self._resolution_dropdown.ToolTip = (
+            "Chord tolerance for meshing. Smaller values produce "
+            "smoother but larger mesh files. Fine (0.1mm) recommended "
+            "for SLA printing, Draft for quick previews."
+        )
+        layout.Add(self._resolution_dropdown)
+
+        layout.AddSpace()
+
+        # Export mode radio buttons
+        lbl3 = ef.Label()
+        lbl3.Text = "Export Mode:"
+        lbl3.ToolTip = "Choose whether to export as a single piece or separate layers."
+        layout.Add(lbl3)
+
+        self._export_single_radio = ef.RadioButton()
+        self._export_single_radio.Text = "Export Single Piece"
+        self._export_single_radio.Checked = True
+        self._export_single_radio.ToolTip = (
+            "Export the entire insole as one solid piece. "
+            "Use for single-material 3D printing or CNC milling."
+        )
+        layout.Add(self._export_single_radio)
+
+        self._export_layer_radio = ef.RadioButton(self._export_single_radio)
+        self._export_layer_radio.Text = "Export by Layer"
+        self._export_layer_radio.ToolTip = (
+            "Export cover, shell, and base as separate files "
+            "with _cover, _shell, _base suffixes. Use for "
+            "multi-material or bilayer EVA milling."
+        )
+        layout.Add(self._export_layer_radio)
+
+        layout.AddSpace()
+
+        # Include Rocker Outline checkbox
+        self._rocker_checkbox = ef.CheckBox()
+        self._rocker_checkbox.Text = "Include Rocker Outline"
+        self._rocker_checkbox.Checked = False
+        self._rocker_checkbox.ToolTip = (
+            "Generate and include the rocker-bottom contact outline "
+            "curve in the export. The curve shows the flat contact "
+            "zone for rocker-bottom shoe design."
+        )
+        layout.Add(self._rocker_checkbox)
+
+        layout.AddSpace()
+
+        # Export button
+        btn_export = ef.Button()
+        btn_export.Text = "Export..."
+        btn_export.ToolTip = (
+            "Validate and export the insole in the selected format. "
+            "A save dialog will appear to choose the output location."
+        )
+        btn_export.Click += self._on_export_click
+        layout.Add(btn_export)
+
+        layout.AddSpace()
+        page.Content = layout
+        return page
+
+    def _on_export_click(self, sender, e):
+        self._clear_tab_warning("Export")
+        Rhino.RhinoApp.RunScript("OT_ExportInsole", False)
+
+    def get_export_params(self):
+        """Return (format, mesh_tolerance, export_by_layer, include_rocker)."""
+        try:
+            # Format
+            fmt_idx = self._format_dropdown.SelectedIndex
+            formats = ["STL", "STEP", "OBJ", "3DM"]
+            fmt = formats[fmt_idx] if 0 <= fmt_idx < len(formats) else "STL"
+
+            # Mesh tolerance
+            res_idx = self._resolution_dropdown.SelectedIndex
+            tolerances = [0.5, 0.2, 0.1, 0.05]
+            mesh_tol = tolerances[res_idx] if 0 <= res_idx < len(tolerances) else 0.1
+
+            # Export mode
+            by_layer = self._export_layer_radio.Checked
+
+            # Rocker
+            include_rocker = self._rocker_checkbox.Checked
+
+            return fmt, mesh_tol, by_layer, include_rocker
+        except Exception:
+            return "STL", 0.1, False, False
 
     def _create_tab_page(self, title, description):
         """Create a single tab page with description label and placeholder button."""
