@@ -288,10 +288,13 @@ def build_rhi():
     rhi_path = os.path.join(BASE_DIR, RHI_FILE)
 
     with zipfile.ZipFile(rhi_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        dev_prefix = FOLDER_NAME + "/dev/"
+        # RHI installer expects all files at the ROOT of the zip.
+        # It recognises Python plugins by finding __plugin__.py at root.
+        # The installer handles creating the PluginName {GUID}/dev/ structure
+        # in the PythonPlugIns directory on the user's machine.
 
         # 1. __plugin__.py (metadata only)
-        zf.writestr(dev_prefix + "__plugin__.py", create_plugin_py())
+        zf.writestr("__plugin__.py", create_plugin_py())
         print("  Added __plugin__.py")
 
         # 2. Convert and add all command files
@@ -304,23 +307,23 @@ def build_rhi():
 
             converted = convert_command_file(src_path, cmd_name)
             target_name = "{}_cmd.py".format(cmd_name)
-            zf.writestr(dev_prefix + target_name, converted)
+            zf.writestr(target_name, converted)
             print("  Added {} (from {})".format(target_name, src_file))
 
         # 3. Add OT_ShowPanel command
-        zf.writestr(dev_prefix + "OT_ShowPanel_cmd.py", create_show_panel_cmd())
+        zf.writestr("OT_ShowPanel_cmd.py", create_show_panel_cmd())
         print("  Added OT_ShowPanel_cmd.py")
 
         # 4. Convert and add panel.py
         panel_path = os.path.join(SRC_DIR, "panel.py")
         converted_panel = convert_panel_to_form(panel_path)
-        zf.writestr(dev_prefix + "panel.py", converted_panel)
+        zf.writestr("panel.py", converted_panel)
         print("  Added panel.py (converted to Form)")
 
         # 5. Add state.py
         state_path = os.path.join(SRC_DIR, "state.py")
         with open(state_path, "r", encoding="utf-8") as f:
-            zf.writestr(dev_prefix + "state.py", f.read())
+            zf.writestr("state.py", f.read())
         print("  Added state.py")
 
         # 6. Add geometry package
@@ -329,22 +332,22 @@ def build_rhi():
             if geom_file.endswith(".py"):
                 geom_path = os.path.join(geom_dir, geom_file)
                 with open(geom_path, "r", encoding="utf-8") as f:
-                    zf.writestr(dev_prefix + "geometry/" + geom_file, f.read())
+                    zf.writestr("geometry/" + geom_file, f.read())
                 print("  Added geometry/{}".format(geom_file))
 
-        # 7. Add toolbar .rui file (at plugin folder level, not dev)
+        # 7. Add toolbar .rui file
         rui_path = os.path.join(SRC_DIR, "OrthoticToolkit.rui")
         if os.path.exists(rui_path):
             with open(rui_path, "rb") as f:
-                zf.writestr(FOLDER_NAME + "/OrthoticToolkit.rui", f.read())
+                zf.writestr("OrthoticToolkit.rui", f.read())
             print("  Added OrthoticToolkit.rui")
 
-        # 8. Add documentation at plugin folder level
+        # 8. Add documentation
         for doc_file in ["README_INSTALL.txt", "QUICK_REFERENCE.txt"]:
             doc_path = os.path.join(SRC_DIR, doc_file)
             if os.path.exists(doc_path):
                 with open(doc_path, "r", encoding="utf-8") as f:
-                    zf.writestr(FOLDER_NAME + "/" + doc_file, f.read())
+                    zf.writestr(doc_file, f.read())
                 print("  Added {}".format(doc_file))
 
     print("\nBuilt: {}".format(rhi_path))
