@@ -16,7 +16,14 @@ import Rhino.UI as rui
 import Eto.Forms as ef
 
 
-PLUGIN_GUID = System.Guid("A1B2C3D4-E5F6-7890-ABCD-EF1234567890")
+# ── Module-level metadata required by Rhino's RHI installer ──
+# These variables are parsed by RhiExec.PythonPluginInfo.LoadPluginPyFile
+# and must be present at module level (not inside a class).
+id = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+version = "1.0.0.0"
+title = "Orthotic Toolkit"
+
+PLUGIN_GUID = System.Guid(id)
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 
 
@@ -93,4 +100,4 @@ class OrthoticToolkitPlugin(rpi.PlugIn):
 
     @property
     def PlugInVersion(self):
-        return "1.0.0"
+        return version
