@@ -261,10 +261,10 @@ def convert_panel_to_form(src_path):
         '"""Modeless form for the Orthotic Toolkit plugin."""'
     )
 
-    # Add form configuration in __init__ after super().__init__()
+    # Fix super() for IronPython 2.7 compatibility and add form configuration
     source = source.replace(
         "        super().__init__()\n        self._build_ui()",
-        '        super().__init__()\n'
+        '        super(OrthoticPanel, self).__init__()\n'
         '        self.Title = "Orthotic Toolkit"\n'
         '        self.MinimumSize = ed.Size(340, 600)\n'
         '        self.Size = ed.Size(380, 750)\n'
@@ -272,6 +272,9 @@ def convert_panel_to_form(src_path):
         '        self.ShowInTaskbar = True\n'
         '        self._build_ui()'
     )
+
+    # Fix all remaining super() calls without arguments (IronPython 2.7)
+    source = source.replace("super().__init__()", "super(OrthoticPanel, self).__init__()")
 
     # Update docstring
     source = source.replace(
