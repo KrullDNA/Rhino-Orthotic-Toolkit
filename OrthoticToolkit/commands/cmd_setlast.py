@@ -37,7 +37,6 @@ def _find_sole_face(brep):
 
     for i in range(brep.Faces.Count):
         face = brep.Faces[i]
-        # Sample the face center normal
         u_domain = face.Domain(0)
         v_domain = face.Domain(1)
         u_mid = u_domain.Mid
@@ -51,7 +50,7 @@ def _find_sole_face(brep):
         if face.OrientationIsReversed:
             normal = -normal
 
-        dot = normal * down  # dot product
+        dot = normal * down
         if dot > best_dot:
             best_dot = dot
             best_face = face
@@ -59,6 +58,59 @@ def _find_sole_face(brep):
     if best_dot > 0.6:
         return best_face
     return None
+
+
+def _get_footprint_by_section(brep):
+    """Get the footprint by taking a horizontal cross-section near the bottom.
+
+    This approach works reliably for Sub-D lasts and complex polysurfaces
+    where individual sole faces may be very small.  It takes a section
+    cut slightly above the bottom of the last and returns the largest
+    closed curve as the footprint.
+    """
+    tol = sc.doc.ModelAbsoluteTolerance
+    bbox = brep.GetBoundingBox(True)
+    if not bbox.IsValid:
+        return None
+
+    # Section at 2% above the bottom of the bounding box
+    z_range = bbox.Max.Z - bbox.Min.Z
+    section_z = bbox.Min.Z + z_range * 0.02
+
+    section_plane = rg.Plane(rg.Point3d(0, 0, section_z), rg.Vector3d.ZAxis)
+    section_curves = rg.Brep.CreateContourCurves(brep, section_plane)
+
+    if section_curves is None or len(section_curves) == 0:
+        # Try slightly higher if bottom section missed
+        section_z = bbox.Min.Z + z_range * 0.05
+        section_plane = rg.Plane(rg.Point3d(0, 0, section_z), rg.Vector3d.ZAxis)
+        section_curves = rg.Brep.CreateContourCurves(brep, section_plane)
+
+    if section_curves is None or len(section_curves) == 0:
+        return None
+
+    # Join curve fragments
+    joined = rg.Curve.JoinCurves(section_curves, tol * 10)
+    if joined is None or len(joined) == 0:
+        joined = section_curves
+
+    # Pick the largest closed curve (by area or bounding box)
+    best_curve = None
+    best_area = 0.0
+    for crv in joined:
+        if not crv.IsClosed:
+            # Try to close it if nearly closed
+            if crv.IsClosable(tol * 100):
+                crv.MakeClosed(tol * 100)
+            else:
+                continue
+        bb = crv.GetBoundingBox(True)
+        area = (bb.Max.X - bb.Min.X) * (bb.Max.Y - bb.Min.Y)
+        if area > best_area:
+            best_area = area
+            best_curve = crv
+
+    return best_curve
 
 
 def _get_face_boundary(face):
@@ -137,54 +189,51 @@ class OT_SetLast(rc.Command):
         rhino_obj = obj_ref.Object()
         last_name = rhino_obj.Name if rhino_obj.Name else rhino_obj.Id.ToString()[:8]
 
-        # Detect the sole face
-        sole_face = _find_sole_face(brep)
-        if sole_face is None:
+        # Get footprint using horizontal cross-section (robust for Sub-D lasts)
+        footprint = _get_footprint_by_section(brep)
+
+        if footprint is None:
+            # Fallback: try single sole face approach for simple lasts
+            sole_face = _find_sole_face(brep)
+            if sole_face is not None:
+                boundary = _get_face_boundary(sole_face)
+                if boundary is not None:
+                    xy_plane = rg.Plane.WorldXY
+                    projected = surface_utils.project_curve_to_plane(
+                        boundary, xy_plane
+                    )
+                    if projected is not None and len(projected) > 0:
+                        footprint = projected[0]
+
+        if footprint is None:
             ef.MessageBox.Show(
-                "Could not detect sole face automatically. Please ensure "
-                "the last is oriented with the sole facing downward "
+                "Could not extract footprint from the shoe last. Please "
+                "ensure the last is oriented with the sole facing downward "
                 "(-Z direction).",
-                "Orthotic Toolkit - Sole Detection Failed",
+                "Orthotic Toolkit - Footprint Extraction Failed",
                 ef.MessageBoxButtons.OK,
                 ef.MessageBoxType.Warning,
             )
             Rhino.RhinoApp.WriteLine(
-                "Orthotic Toolkit: Sole face detection failed. "
+                "Orthotic Toolkit: Footprint extraction failed. "
                 "Ensure the last is oriented sole-down (-Z)."
             )
             _refresh_panel(None, error=True)
             return rc.Result.Failure
 
-        # Get the sole face boundary curve
-        boundary = _get_face_boundary(sole_face)
-        if boundary is None:
-            Rhino.RhinoApp.WriteLine(
-                "Orthotic Toolkit: Could not extract sole face boundary."
-            )
-            _refresh_panel(None, error=True)
-            return rc.Result.Failure
-
-        # Project boundary to world XY plane
+        # Project footprint to XY plane (flatten Z to 0)
         xy_plane = rg.Plane.WorldXY
-        projected = surface_utils.project_curve_to_plane(boundary, xy_plane)
-        if len(projected) == 0:
-            Rhino.RhinoApp.WriteLine(
-                "Orthotic Toolkit: Failed to project sole boundary to XY plane."
-            )
-            _refresh_panel(None, error=True)
-            return rc.Result.Failure
-        footprint = projected[0]
+        projected = surface_utils.project_curve_to_plane(footprint, xy_plane)
+        if projected is not None and len(projected) > 0:
+            footprint = projected[0]
 
-        # Create inverse sole surface
-        inverse_sole = surface_utils.create_inverse_sole_surface(
-            sole_face, state.cover_thickness_mm
-        )
-        if inverse_sole is None:
-            Rhino.RhinoApp.WriteLine(
-                "Orthotic Toolkit: Failed to create inverse sole surface."
+        # Try to detect sole face for inverse surface (optional, non-fatal)
+        sole_face = _find_sole_face(brep)
+        inverse_sole = None
+        if sole_face is not None:
+            inverse_sole = surface_utils.create_inverse_sole_surface(
+                sole_face, state.cover_thickness_mm
             )
-            _refresh_panel(None, error=True)
-            return rc.Result.Failure
 
         # Remove previous preview objects
         for obj_id in state.preview_object_ids:
