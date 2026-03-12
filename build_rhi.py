@@ -138,7 +138,10 @@ def convert_command_file(src_path, command_name):
     output_lines.append("")
     output_lines.append("")
 
-    # Add the RunCommand function
+    # Add the command name variable and RunCommand function
+    output_lines.append('__commandname__ = "{}"'.format(command_name))
+    output_lines.append("")
+    output_lines.append("")
     output_lines.append("def RunCommand(is_interactive):")
 
     # Process body: replace 'doc' references with 'scriptcontext.doc' / 'sc.doc'
@@ -190,7 +193,7 @@ def convert_command_file(src_path, command_name):
 def create_plugin_py():
     """Create the simple __plugin__.py metadata file."""
     return textwrap.dedent("""\
-        id="{}"
+        id="{{{}}}"
         version="1.0.0.0"
         title="Orthotic Toolkit"
     """.format(PLUGIN_GUID))
@@ -209,6 +212,8 @@ def create_show_panel_cmd():
         import Eto.Forms as ef
         import Eto.Drawing as ed
 
+
+        __commandname__ = "OT_ShowPanel"
 
         # Module-level reference to keep the form alive
         _panel_form = None
