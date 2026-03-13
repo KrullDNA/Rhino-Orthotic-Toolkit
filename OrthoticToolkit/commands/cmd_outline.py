@@ -7,7 +7,9 @@ the shoe last's sole shape.  Falls back to flat extrusion if the
 conforming approach fails.
 """
 
+import clr
 import System
+clr.AddReference("System.Drawing")
 import System.Drawing
 import Rhino
 import Rhino.Display
@@ -39,7 +41,7 @@ class _InsolePreviewConduit(Rhino.Display.DisplayConduit):
     """
 
     def __init__(self):
-        super().__init__()
+        super(_InsolePreviewConduit, self).__init__()
         self.mesh = None
         self._material = Rhino.Display.DisplayMaterial()
         self._material.Diffuse = System.Drawing.Color.FromArgb(100, 0, 120, 255)

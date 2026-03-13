@@ -56,12 +56,19 @@ def convert_command_file(src_path, command_name):
 
     lines = source.split("\n")
 
-    # Find where the class starts
+    # Find where the command class starts (match by command_name to skip
+    # other classes like DisplayConduit subclasses in the same file)
     class_line_idx = None
     for i, line in enumerate(lines):
-        if re.match(r"^class\s+\w+\(", line):
+        if re.match(r"^class\s+" + re.escape(command_name) + r"\b", line):
             class_line_idx = i
             break
+    # Fallback: match any class with (rc.Command) or (Rhino.Commands.Command)
+    if class_line_idx is None:
+        for i, line in enumerate(lines):
+            if re.match(r"^class\s+\w+\(.*Command", line):
+                class_line_idx = i
+                break
 
     if class_line_idx is None:
         # No class found - return source as-is with a RunCommand wrapper
@@ -290,6 +297,13 @@ def convert_panel_to_form(src_path):
     source = source.replace(
         '"Total: {:.1f}mm".format(total)',
         '"Total: {:.1f}mm".format(float(total))'
+    )
+
+    # Fix cross-file imports: panel.py references command modules by
+    # their source names but in the .rhi package they are renamed.
+    source = source.replace(
+        "from commands.cmd_outline import update_insole_preview",
+        "from OT_GenerateOutline_cmd import update_insole_preview"
     )
 
     # Update docstring
