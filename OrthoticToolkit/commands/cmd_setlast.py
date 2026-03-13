@@ -61,56 +61,92 @@ def _find_sole_face(brep):
 
 
 def _get_footprint_by_section(brep):
-    """Get the footprint by taking a horizontal cross-section near the bottom.
+    """Get the footprint by taking horizontal cross-sections at many heights.
 
-    This approach works reliably for Sub-D lasts and complex polysurfaces
-    where individual sole faces may be very small.  It takes a section
-    cut slightly above the bottom of the last and returns the largest
-    closed curve as the footprint.
+    Sub-D lasts have curved soles, so a single low section only captures
+    a small area (e.g. the heel).  This function takes sections at many
+    heights from the bottom of the bounding box, projects them all to
+    the XY plane, and combines them via boolean union to produce the
+    full sole outline.
     """
     tol = sc.doc.ModelAbsoluteTolerance
     bbox = brep.GetBoundingBox(True)
     if not bbox.IsValid:
         return None
 
-    # Section at 2% above the bottom of the bounding box
     z_range = bbox.Max.Z - bbox.Min.Z
-    section_z = bbox.Min.Z + z_range * 0.02
-
-    section_plane = rg.Plane(rg.Point3d(0, 0, section_z), rg.Vector3d.ZAxis)
-    section_curves = rg.Brep.CreateContourCurves(brep, section_plane)
-
-    if section_curves is None or len(section_curves) == 0:
-        # Try slightly higher if bottom section missed
-        section_z = bbox.Min.Z + z_range * 0.05
-        section_plane = rg.Plane(rg.Point3d(0, 0, section_z), rg.Vector3d.ZAxis)
-        section_curves = rg.Brep.CreateContourCurves(brep, section_plane)
-
-    if section_curves is None or len(section_curves) == 0:
+    if z_range < tol:
         return None
 
-    # Join curve fragments
-    joined = rg.Curve.JoinCurves(section_curves, tol * 10)
-    if joined is None or len(joined) == 0:
-        joined = section_curves
+    # Take sections at many heights in the lower half of the last
+    section_pcts = [0.02, 0.05, 0.08, 0.10, 0.13, 0.15, 0.18, 0.20,
+                    0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
 
-    # Pick the largest closed curve (by area or bounding box)
-    best_curve = None
+    xy_plane = rg.Plane.WorldXY
+    all_closed = []
+
+    for pct in section_pcts:
+        section_z = bbox.Min.Z + z_range * pct
+        section_plane = rg.Plane(
+            rg.Point3d(0, 0, section_z), rg.Vector3d.ZAxis
+        )
+        section_curves = rg.Brep.CreateContourCurves(brep, section_plane)
+        if section_curves is None or len(section_curves) == 0:
+            continue
+
+        # Join fragments from this section
+        joined = rg.Curve.JoinCurves(section_curves, tol * 10)
+        if joined is None or len(joined) == 0:
+            joined = section_curves
+
+        for crv in joined:
+            if not crv.IsClosed:
+                if crv.IsClosable(tol * 100):
+                    crv.MakeClosed(tol * 100)
+                else:
+                    continue
+
+            # Project this closed curve down to Z=0
+            flat = rg.Curve.ProjectToPlane(crv, xy_plane)
+            if flat is not None and flat.IsClosed:
+                all_closed.append(flat)
+
+    if len(all_closed) == 0:
+        return None
+
+    # If only one curve, return it directly
+    if len(all_closed) == 1:
+        return all_closed[0]
+
+    # Boolean-union all projected curves to get the outer envelope
+    try:
+        union = rg.Curve.CreateBooleanUnion(all_closed, tol)
+        if union is not None and len(union) > 0:
+            # Pick the largest curve from the union result
+            best = None
+            best_area = 0.0
+            for crv in union:
+                if crv.IsClosed:
+                    bb = crv.GetBoundingBox(True)
+                    area = (bb.Max.X - bb.Min.X) * (bb.Max.Y - bb.Min.Y)
+                    if area > best_area:
+                        best_area = area
+                        best = crv
+            if best is not None:
+                return best
+    except Exception:
+        pass
+
+    # Fallback: if boolean union fails, return the largest individual curve
+    best = None
     best_area = 0.0
-    for crv in joined:
-        if not crv.IsClosed:
-            # Try to close it if nearly closed
-            if crv.IsClosable(tol * 100):
-                crv.MakeClosed(tol * 100)
-            else:
-                continue
+    for crv in all_closed:
         bb = crv.GetBoundingBox(True)
         area = (bb.Max.X - bb.Min.X) * (bb.Max.Y - bb.Min.Y)
         if area > best_area:
             best_area = area
-            best_curve = crv
-
-    return best_curve
+            best = crv
+    return best
 
 
 def _get_face_boundary(face):
@@ -227,14 +263,6 @@ class OT_SetLast(rc.Command):
         if projected is not None and len(projected) > 0:
             footprint = projected[0]
 
-        # Try to detect sole face for inverse surface (optional, non-fatal)
-        sole_face = _find_sole_face(brep)
-        inverse_sole = None
-        if sole_face is not None:
-            inverse_sole = surface_utils.create_inverse_sole_surface(
-                sole_face, state.cover_thickness_mm
-            )
-
         # Remove previous preview objects
         for obj_id in state.preview_object_ids:
             try:
@@ -244,9 +272,9 @@ class OT_SetLast(rc.Command):
 
         # Store results in state
         state.active_last_brep = brep
-        state.sole_face = sole_face
+        state.sole_face = _find_sole_face(brep)
         state.footprint_curve = footprint
-        state.insole_top_surface = inverse_sole
+        state.insole_top_surface = None
         state.active_last_name = last_name
         state.preview_object_ids = []
 
@@ -269,7 +297,7 @@ class OT_SetLast(rc.Command):
 
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: Shoe last '{}' selected. "
-            "Sole face detected, footprint curve projected to XY plane, "
-            "inverse sole surface created.".format(last_name)
+            "Footprint curve projected to XY plane. "
+            "Ready for Generate Outline.".format(last_name)
         )
         return rc.Result.Success
