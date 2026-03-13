@@ -263,14 +263,6 @@ class OT_SetLast(rc.Command):
         if projected is not None and len(projected) > 0:
             footprint = projected[0]
 
-        # Try to detect sole face for inverse surface (optional, non-fatal)
-        sole_face = _find_sole_face(brep)
-        inverse_sole = None
-        if sole_face is not None:
-            inverse_sole = surface_utils.create_inverse_sole_surface(
-                sole_face, state.cover_thickness_mm
-            )
-
         # Remove previous preview objects
         for obj_id in state.preview_object_ids:
             try:
@@ -280,9 +272,9 @@ class OT_SetLast(rc.Command):
 
         # Store results in state
         state.active_last_brep = brep
-        state.sole_face = sole_face
+        state.sole_face = _find_sole_face(brep)
         state.footprint_curve = footprint
-        state.insole_top_surface = inverse_sole
+        state.insole_top_surface = None
         state.active_last_name = last_name
         state.preview_object_ids = []
 
@@ -305,7 +297,7 @@ class OT_SetLast(rc.Command):
 
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: Shoe last '{}' selected. "
-            "Sole face detected, footprint curve projected to XY plane, "
-            "inverse sole surface created.".format(last_name)
+            "Footprint curve projected to XY plane. "
+            "Ready for Generate Outline.".format(last_name)
         )
         return rc.Result.Success
