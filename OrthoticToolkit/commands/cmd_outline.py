@@ -8,7 +8,9 @@ conforming approach fails.
 """
 
 import System
+import System.Drawing
 import Rhino
+import Rhino.Display
 import Rhino.Geometry as rg
 import Rhino.Commands as rc
 import Rhino.DocObjects as rd
@@ -24,9 +26,128 @@ PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_OUTLINE_LAYER = "OT_Outline"
 OT_INSOLE_LAYER = "OT_Insole"
 
-# Grid resolution for sole surface ray sampling
-SOLE_GRID_U = 30
-SOLE_GRID_V = 15
+# ---------------------------------------------------------------------------
+# Display conduit for live insole preview
+# ---------------------------------------------------------------------------
+
+class _InsolePreviewConduit(Rhino.Display.DisplayConduit):
+    """Draws a translucent insole mesh preview in the viewport.
+
+    Set ``mesh`` to a Rhino.Geometry.Mesh and call ``Enabled = True``
+    to start drawing.  Set ``mesh = None`` and ``Enabled = False``
+    to stop.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.mesh = None
+        self._material = Rhino.Display.DisplayMaterial()
+        self._material.Diffuse = System.Drawing.Color.FromArgb(100, 0, 120, 255)
+        self._material.Transparency = 0.55
+
+    def CalculateBoundingBox(self, e):
+        if self.mesh is not None:
+            e.IncludeBoundingBox(self.mesh.GetBoundingBox(False))
+
+    def PostDrawObjects(self, e):
+        if self.mesh is not None:
+            e.Display.DrawMeshShaded(self.mesh, self._material)
+
+
+# Module-level singleton so it survives across command invocations
+_preview_conduit = _InsolePreviewConduit()
+
+
+# ---------------------------------------------------------------------------
+# Outline curve builder (shared by command and live preview)
+# ---------------------------------------------------------------------------
+
+def _build_outline_curve(footprint, perimeter_offset, toe_ext, heel_ext):
+    """Build the offset insole outline curve from the footprint.
+
+    Returns a closed curve or None.
+    """
+    tol = sc.doc.ModelAbsoluteTolerance
+    plane = rg.Plane.WorldXY
+
+    offset_curves = footprint.Offset(
+        plane, -perimeter_offset, tol, rg.CurveOffsetCornerStyle.Sharp
+    )
+    if offset_curves is None or len(offset_curves) == 0:
+        offset_curves = footprint.Offset(
+            plane, perimeter_offset, tol, rg.CurveOffsetCornerStyle.Sharp
+        )
+    if offset_curves is None or len(offset_curves) == 0:
+        return None
+
+    outline = offset_curves[0]
+
+    if toe_ext != 0 or heel_ext != 0:
+        bbox = outline.GetBoundingBox(True)
+        if bbox.IsValid:
+            center = bbox.Center
+            y_range = bbox.Max.Y - bbox.Min.Y
+            if y_range > 0:
+                total_ext = toe_ext + heel_ext
+                scale_y = (y_range + total_ext) / y_range
+                shift_y = (toe_ext - heel_ext) / 2.0
+
+                xform_scale = rg.Transform.Scale(
+                    rg.Plane(center, rg.Vector3d.XAxis, rg.Vector3d.YAxis),
+                    1.0, scale_y, 1.0,
+                )
+                outline.Transform(xform_scale)
+
+                if abs(shift_y) > 0.001:
+                    xform_move = rg.Transform.Translation(0, shift_y, 0)
+                    outline.Transform(xform_move)
+
+    if not outline.IsClosed:
+        outline.MakeClosed(tol)
+
+    return outline
+
+
+def update_insole_preview(perimeter_offset, toe_ext, heel_ext):
+    """Rebuild the live insole mesh preview from current state.
+
+    Called by panel sliders on value change.  If prerequisites are
+    missing the preview is silently cleared.
+    """
+    if state.active_last_brep is None or state.footprint_curve is None:
+        _preview_conduit.mesh = None
+        _preview_conduit.Enabled = False
+        return
+
+    outline = _build_outline_curve(
+        state.footprint_curve, perimeter_offset, toe_ext, heel_ext,
+    )
+    if outline is None:
+        _preview_conduit.mesh = None
+        _preview_conduit.Enabled = False
+        return
+
+    total_thickness = (
+        state.cover_thickness_mm
+        + state.shell_thickness_mm
+        + state.base_thickness_mm
+    )
+
+    mesh = _build_insole_mesh(state.active_last_brep, outline, total_thickness)
+    _preview_conduit.mesh = mesh
+    _preview_conduit.Enabled = mesh is not None
+
+    # Redraw viewports to show updated preview
+    try:
+        sc.doc.Views.Redraw()
+    except Exception:
+        pass
+
+
+def disable_insole_preview():
+    """Turn off the live preview conduit (e.g. after committing geometry)."""
+    _preview_conduit.mesh = None
+    _preview_conduit.Enabled = False
 
 
 def _get_panel_values():
@@ -67,29 +188,20 @@ def _sole_z_at(last_brep, x, y, z_start):
     return None
 
 
-def _create_conforming_insole(last_brep, outline, total_thickness):
-    """Create an insole Brep whose top surface conforms to the shoe last sole.
+def _build_insole_mesh(last_brep, outline, total_thickness):
+    """Build the insole as a Rhino.Geometry.Mesh.
 
-    Builds a closed mesh by:
-      1. Sampling the outline perimeter densely and ray-shooting each
-         point upward to get the sole Z height.
-      2. Creating concentric inner rings (interpolated toward the centroid)
-         with ray-shot Z values for interior detail.
-      3. Connecting rings with quad faces (top + bottom), adding a
-         triangle fan to the centroid, and stitching side walls.
-      4. Converting the closed mesh to a Brep.
+    Top surface conforms to the shoe last sole (ray-shot Z values).
+    Bottom surface is a flat plane at z_bottom = min(sole_z) - total_thickness.
+    Side walls connect top perimeter to bottom perimeter.
 
-    Returns a Brep or None on failure.
+    Returns a Mesh or None on failure.
     """
-    tol = sc.doc.ModelAbsoluteTolerance
     brep_bbox = last_brep.GetBoundingBox(True)
-
     if not brep_bbox.IsValid:
         return None
 
     z_start = brep_bbox.Min.Z - 10.0
-
-    # --- Helper: ray-shoot with fallback ---
     fallback_z = brep_bbox.Min.Z
 
     def sole_z(x, y):
@@ -113,41 +225,45 @@ def _create_conforming_insole(last_brep, outline, total_thickness):
         return None
     centroid = area_props.Centroid
 
-    # --- Step 3: Build concentric rings ---
-    # ring_fractions: 0.0 = perimeter, approaching 1.0 = centroid
+    # --- Step 3: Build concentric rings and collect sole Z values ---
     ring_fractions = [0.0, 0.20, 0.40, 0.60, 0.80]
-    rings = []  # each ring is a list of (x, y)
+    rings = []
+    all_z = []
 
     for frac in ring_fractions:
         ring = []
         for px, py in perim_xy:
             x = px + frac * (centroid.X - px)
             y = py + frac * (centroid.Y - py)
-            ring.append((x, y))
+            z = sole_z(x, y)
+            ring.append((x, y, z))
+            all_z.append(z)
         rings.append(ring)
+
+    cz = sole_z(centroid.X, centroid.Y)
+    all_z.append(cz)
+
+    # Flat bottom plane at the lowest sole point minus thickness
+    z_bottom = min(all_z) - total_thickness
 
     # --- Step 4: Build mesh vertices ---
     mesh = rg.Mesh()
-
-    ring_top = []   # ring_top[r][i] = vertex index
+    ring_top = []
     ring_bot = []
 
     for ring in rings:
         row_top = []
         row_bot = []
-        for x, y in ring:
-            z = sole_z(x, y)
+        for x, y, z in ring:
             ti = mesh.Vertices.Add(x, y, z)
-            bi = mesh.Vertices.Add(x, y, z - total_thickness)
+            bi = mesh.Vertices.Add(x, y, z_bottom)
             row_top.append(ti)
             row_bot.append(bi)
         ring_top.append(row_top)
         ring_bot.append(row_bot)
 
-    # Centroid vertex
-    cz = sole_z(centroid.X, centroid.Y)
     ct = mesh.Vertices.Add(centroid.X, centroid.Y, cz)
-    cb = mesh.Vertices.Add(centroid.X, centroid.Y, cz - total_thickness)
+    cb = mesh.Vertices.Add(centroid.X, centroid.Y, z_bottom)
 
     n = len(perim_xy)
 
@@ -159,9 +275,7 @@ def _create_conforming_insole(last_brep, outline, total_thickness):
         ib = ring_bot[r + 1]
         for i in range(n):
             j = (i + 1) % n
-            # Top quad (normal up → CCW from above)
             mesh.Faces.AddFace(ot[i], ot[j], it_[j], it_[i])
-            # Bottom quad (normal down → CW from above)
             mesh.Faces.AddFace(ob[i], ib[i], ib[j], ob[j])
 
     # --- Step 6: Triangle fan from innermost ring to centroid ---
@@ -184,17 +298,22 @@ def _create_conforming_insole(last_brep, outline, total_thickness):
     mesh.Compact()
 
     if not mesh.IsValid:
-        Rhino.RhinoApp.WriteLine(
-            "Orthotic Toolkit: Conforming mesh invalid, attempting repair."
-        )
         mesh.RebuildNormals()
 
-    # Convert to Brep
-    brep_result = rg.Brep.CreateFromMesh(mesh, False)
-    if brep_result is not None:
-        return brep_result
+    return mesh
 
-    return None
+
+def _create_conforming_insole(last_brep, outline, total_thickness):
+    """Create an insole Brep whose top conforms to the sole, bottom is flat.
+
+    Returns a Brep or None on failure.
+    """
+    mesh = _build_insole_mesh(last_brep, outline, total_thickness)
+    if mesh is None:
+        return None
+
+    brep_result = rg.Brep.CreateFromMesh(mesh, False)
+    return brep_result
 
 
 def _create_flat_insole(outline, total_thickness):
@@ -248,55 +367,19 @@ class OT_GenerateOutline(rc.Command):
         state.toe_extension = toe_ext
         state.heel_extension = heel_ext
 
-        tol = sc.doc.ModelAbsoluteTolerance
-        plane = rg.Plane.WorldXY
+        # Disable live preview — we are committing final geometry
+        disable_insole_preview()
 
-        # Offset the footprint curve inward by perimeter_offset
-        footprint = state.footprint_curve
-        offset_curves = footprint.Offset(
-            plane, -perimeter_offset, tol, rg.CurveOffsetCornerStyle.Sharp
+        # Build the outline curve from footprint + parameters
+        outline = _build_outline_curve(
+            state.footprint_curve, perimeter_offset, toe_ext, heel_ext,
         )
-
-        if offset_curves is None or len(offset_curves) == 0:
-            # Try outward offset if inward failed
-            offset_curves = footprint.Offset(
-                plane, perimeter_offset, tol, rg.CurveOffsetCornerStyle.Sharp
-            )
-
-        if offset_curves is None or len(offset_curves) == 0:
+        if outline is None:
             Rhino.RhinoApp.WriteLine(
                 "Orthotic Toolkit: Footprint offset failed."
             )
             _show_panel_warning("Footprint offset failed.")
             return rc.Result.Failure
-
-        outline = offset_curves[0]
-
-        # Apply toe and heel extensions by scaling the outline
-        # at the toe (max Y) and heel (min Y) ends
-        if toe_ext != 0 or heel_ext != 0:
-            bbox = outline.GetBoundingBox(True)
-            if bbox.IsValid:
-                center = bbox.Center
-                y_range = bbox.Max.Y - bbox.Min.Y
-                if y_range > 0:
-                    total_ext = toe_ext + heel_ext
-                    scale_y = (y_range + total_ext) / y_range
-                    shift_y = (toe_ext - heel_ext) / 2.0
-
-                    xform_scale = rg.Transform.Scale(
-                        rg.Plane(center, rg.Vector3d.XAxis, rg.Vector3d.YAxis),
-                        1.0, scale_y, 1.0,
-                    )
-                    outline.Transform(xform_scale)
-
-                    if abs(shift_y) > 0.001:
-                        xform_move = rg.Transform.Translation(0, shift_y, 0)
-                        outline.Transform(xform_move)
-
-        # Ensure the outline is closed
-        if not outline.IsClosed:
-            outline.MakeClosed(tol)
 
         # Store outline in state
         state.insole_outline = outline
@@ -338,19 +421,27 @@ class OT_GenerateOutline(rc.Command):
         if conforming:
             state.insole_top_surface = insole_brep
 
+        # Remove previous outline/insole objects if they exist
+        if state.insole_outline_guid is not None:
+            doc.Objects.Delete(state.insole_outline_guid, True)
+            state.insole_outline_guid = None
+        if state.insole_brep_guid is not None:
+            doc.Objects.Delete(state.insole_brep_guid, True)
+            state.insole_brep_guid = None
+
         # Add outline to OT_Outline layer
         outline_layer = ensure_layer(OT_OUTLINE_LAYER)
         attrs = rd.ObjectAttributes()
         attrs.LayerIndex = outline_layer
         attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
-        doc.Objects.AddCurve(outline, attrs)
+        state.insole_outline_guid = doc.Objects.AddCurve(outline, attrs)
 
         # Add insole Brep to OT_Insole layer
         insole_layer = ensure_layer(OT_INSOLE_LAYER)
         attrs2 = rd.ObjectAttributes()
         attrs2.LayerIndex = insole_layer
         attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
-        doc.Objects.AddBrep(insole_brep, attrs2)
+        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
 
         doc.Views.Redraw()
 

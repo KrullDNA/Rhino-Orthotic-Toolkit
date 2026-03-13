@@ -417,14 +417,20 @@ class OrthoticPanel(ef.Panel):
             "0mm = standard, 5-10mm for extended heel platforms."
         ))
 
+        # Hook live preview to all three outline sliders
+        for attr in ("perimeter_offset", "toe_extension", "heel_extension"):
+            slider = getattr(self, "_slider_" + attr, None)
+            if slider is not None:
+                slider.ValueChanged += self._on_outline_slider_changed
+
         layout.AddSpace()
 
         btn = ef.Button()
         btn.Text = "Generate Outline"
         btn.ToolTip = (
-            "Create the insole outline curve and a flat base Brep from the "
-            "current shoe last footprint. This is the starting shape that "
-            "all other tools build upon."
+            "Create the insole outline curve and sole-conforming Brep from "
+            "the current shoe last footprint. This is the starting shape "
+            "that all other tools build upon."
         )
         btn.Click += self._on_generate_outline
         layout.Add(btn)
@@ -432,6 +438,15 @@ class OrthoticPanel(ef.Panel):
         layout.AddSpace()
         page.Content = layout
         return page
+
+    def _on_outline_slider_changed(self, sender, e):
+        """Update the live insole preview when any outline slider moves."""
+        try:
+            from commands.cmd_outline import update_insole_preview
+            params = self.get_outline_params()
+            update_insole_preview(*params)
+        except Exception:
+            pass
 
     def _on_generate_outline(self, sender, e):
         self._clear_tab_warning("Outline")
