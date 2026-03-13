@@ -70,133 +70,129 @@ def _sole_z_at(last_brep, x, y, z_start):
 def _create_conforming_insole(last_brep, outline, total_thickness):
     """Create an insole Brep whose top surface conforms to the shoe last sole.
 
-    Shoots a grid of rays upward from below the shoe last to capture the
-    sole surface shape, builds a 3D boundary curve on the sole, creates
-    a patch surface through the interior points, then builds a solid with
-    uniform thickness below.
+    Builds a closed mesh by:
+      1. Sampling the outline perimeter densely and ray-shooting each
+         point upward to get the sole Z height.
+      2. Creating concentric inner rings (interpolated toward the centroid)
+         with ray-shot Z values for interior detail.
+      3. Connecting rings with quad faces (top + bottom), adding a
+         triangle fan to the centroid, and stitching side walls.
+      4. Converting the closed mesh to a Brep.
 
-    Falls back to None if the conforming approach fails.
+    Returns a Brep or None on failure.
     """
     tol = sc.doc.ModelAbsoluteTolerance
     brep_bbox = last_brep.GetBoundingBox(True)
-    outline_bbox = outline.GetBoundingBox(True)
 
-    if not brep_bbox.IsValid or not outline_bbox.IsValid:
+    if not brep_bbox.IsValid:
         return None
 
     z_start = brep_bbox.Min.Z - 10.0
 
-    # --- Step 1: Create 3D boundary curve on the sole surface ---
-    div_params = outline.DivideByCount(80, True)
+    # --- Helper: ray-shoot with fallback ---
+    fallback_z = brep_bbox.Min.Z
+
+    def sole_z(x, y):
+        z = _sole_z_at(last_brep, x, y, z_start)
+        return z if z is not None else fallback_z
+
+    # --- Step 1: Sample outline perimeter ---
+    N_PERIM = 80
+    div_params = outline.DivideByCount(N_PERIM, True)
     if div_params is None or len(div_params) < 10:
         return None
 
-    z_values = []
-    boundary_pts = []
+    perim_xy = []
     for t in div_params:
         pt = outline.PointAt(t)
-        z = _sole_z_at(last_brep, pt.X, pt.Y, z_start)
-        if z is None:
-            z = brep_bbox.Min.Z
-        z_values.append(z)
-        boundary_pts.append(rg.Point3d(pt.X, pt.Y, z))
+        perim_xy.append((pt.X, pt.Y))
 
-    # Close the boundary
-    boundary_pts.append(boundary_pts[0])
-
-    top_boundary = rg.Curve.CreateInterpolatedCurve(boundary_pts, 3)
-    if top_boundary is None:
+    # --- Step 2: Compute centroid ---
+    area_props = rg.AreaMassProperties.Compute(outline)
+    if area_props is None:
         return None
-    if not top_boundary.IsClosed:
-        top_boundary.MakeClosed(tol * 10)
+    centroid = area_props.Centroid
 
-    z_min_sole = min(z_values)
-    z_bottom = z_min_sole - total_thickness
+    # --- Step 3: Build concentric rings ---
+    # ring_fractions: 0.0 = perimeter, approaching 1.0 = centroid
+    ring_fractions = [0.0, 0.20, 0.40, 0.60, 0.80]
+    rings = []  # each ring is a list of (x, y)
 
-    # --- Step 2: Collect interior sole points ---
-    x_min = outline_bbox.Min.X
-    x_max = outline_bbox.Max.X
-    y_min = outline_bbox.Min.Y
-    y_max = outline_bbox.Max.Y
-    dx = (x_max - x_min) / (SOLE_GRID_U - 1)
-    dy = (y_max - y_min) / (SOLE_GRID_V - 1)
-    xy_plane = rg.Plane.WorldXY
+    for frac in ring_fractions:
+        ring = []
+        for px, py in perim_xy:
+            x = px + frac * (centroid.X - px)
+            y = py + frac * (centroid.Y - py)
+            ring.append((x, y))
+        rings.append(ring)
 
-    interior_points = []
-    for iu in range(SOLE_GRID_U):
-        for iv in range(SOLE_GRID_V):
-            x = x_min + iu * dx
-            y = y_min + iv * dy
-            pt = rg.Point3d(x, y, 0)
-            if outline.Contains(pt, xy_plane, tol) == rg.PointContainment.Outside:
-                continue
-            z = _sole_z_at(last_brep, x, y, z_start)
-            if z is not None:
-                interior_points.append(rg.Point(rg.Point3d(x, y, z)))
+    # --- Step 4: Build mesh vertices ---
+    mesh = rg.Mesh()
 
-    if len(interior_points) < 10:
-        return None
+    ring_top = []   # ring_top[r][i] = vertex index
+    ring_bot = []
 
-    # --- Step 3: Create top surface via Brep.CreatePatch ---
-    geometry = [top_boundary]
-    geometry.extend(interior_points)
+    for ring in rings:
+        row_top = []
+        row_bot = []
+        for x, y in ring:
+            z = sole_z(x, y)
+            ti = mesh.Vertices.Add(x, y, z)
+            bi = mesh.Vertices.Add(x, y, z - total_thickness)
+            row_top.append(ti)
+            row_bot.append(bi)
+        ring_top.append(row_top)
+        ring_bot.append(row_bot)
 
-    top_patch = None
-    try:
-        top_patch = rg.Brep.CreatePatch(
-            geometry,
-            None,           # no starting surface
-            10, 10,         # u/v spans
-            True,           # trim to boundary
-            False,          # no tangency
-            1.0,            # point spacing
-            1.0,            # flexibility
-            0.0,            # surface pull
-            [True],         # fix boundary edge
-            tol,
+    # Centroid vertex
+    cz = sole_z(centroid.X, centroid.Y)
+    ct = mesh.Vertices.Add(centroid.X, centroid.Y, cz)
+    cb = mesh.Vertices.Add(centroid.X, centroid.Y, cz - total_thickness)
+
+    n = len(perim_xy)
+
+    # --- Step 5: Quad faces between consecutive rings ---
+    for r in range(len(rings) - 1):
+        ot = ring_top[r]
+        ob = ring_bot[r]
+        it_ = ring_top[r + 1]
+        ib = ring_bot[r + 1]
+        for i in range(n):
+            j = (i + 1) % n
+            # Top quad (normal up → CCW from above)
+            mesh.Faces.AddFace(ot[i], ot[j], it_[j], it_[i])
+            # Bottom quad (normal down → CW from above)
+            mesh.Faces.AddFace(ob[i], ib[i], ib[j], ob[j])
+
+    # --- Step 6: Triangle fan from innermost ring to centroid ---
+    inner_t = ring_top[-1]
+    inner_b = ring_bot[-1]
+    for i in range(n):
+        j = (i + 1) % n
+        mesh.Faces.AddFace(inner_t[i], inner_t[j], ct)
+        mesh.Faces.AddFace(inner_b[i], cb, inner_b[j])
+
+    # --- Step 7: Side walls on outermost ring (perimeter) ---
+    outer_t = ring_top[0]
+    outer_b = ring_bot[0]
+    for i in range(n):
+        j = (i + 1) % n
+        mesh.Faces.AddFace(outer_t[i], outer_b[i], outer_b[j], outer_t[j])
+
+    # --- Step 8: Finalise mesh ---
+    mesh.Normals.ComputeNormals()
+    mesh.Compact()
+
+    if not mesh.IsValid:
+        Rhino.RhinoApp.WriteLine(
+            "Orthotic Toolkit: Conforming mesh invalid, attempting repair."
         )
-    except Exception:
-        pass
+        mesh.RebuildNormals()
 
-    if top_patch is None:
-        return None
-
-    # --- Step 4: Create bottom boundary + flat bottom surface ---
-    bottom_pts = []
-    for p in boundary_pts[:-1]:
-        bottom_pts.append(rg.Point3d(p.X, p.Y, z_bottom))
-    bottom_pts.append(bottom_pts[0])
-
-    bottom_boundary = rg.Curve.CreateInterpolatedCurve(bottom_pts, 3)
-    if bottom_boundary is None:
-        return None
-    if not bottom_boundary.IsClosed:
-        bottom_boundary.MakeClosed(tol * 10)
-
-    bottom_breps = rg.Brep.CreatePlanarBreps(bottom_boundary, tol)
-    if bottom_breps is None or len(bottom_breps) == 0:
-        return None
-    bottom_patch = bottom_breps[0]
-
-    # --- Step 5: Create side walls by lofting top → bottom boundary ---
-    lofts = rg.Brep.CreateFromLoft(
-        [top_boundary, bottom_boundary],
-        rg.Point3d.Unset, rg.Point3d.Unset,
-        rg.LoftType.Straight, False,
-    )
-    if lofts is None or len(lofts) == 0:
-        return None
-
-    # --- Step 6: Join into a solid ---
-    all_breps = [top_patch] + list(lofts) + [bottom_patch]
-    joined = rg.Brep.JoinBreps(all_breps, tol)
-    if joined is not None and len(joined) > 0:
-        result = joined[0]
-        if not result.IsSolid:
-            capped = result.CapPlanarHoles(tol)
-            if capped is not None:
-                result = capped
-        return result
+    # Convert to Brep
+    brep_result = rg.Brep.CreateFromMesh(mesh, False)
+    if brep_result is not None:
+        return brep_result
 
     return None
 
