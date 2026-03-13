@@ -63,7 +63,7 @@ def _sole_z_at(last_brep, x, y, z_start):
     ray = rg.Ray3d(origin, rg.Vector3d(0, 0, 1))
     hits = rg.Intersect.Intersection.RayShoot(ray, [last_brep], 1)
     if hits is not None and len(hits) > 0:
-        return ray.PointAt(hits[0]).Z
+        return hits[0].Z
     return None
 
 
