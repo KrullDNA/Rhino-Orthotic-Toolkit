@@ -7,7 +7,9 @@ the shoe last's sole shape.  Falls back to flat extrusion if the
 conforming approach fails.
 """
 
+import clr
 import System
+clr.AddReference("System.Drawing")
 import System.Drawing
 import Rhino
 import Rhino.Display
@@ -39,7 +41,7 @@ class _InsolePreviewConduit(Rhino.Display.DisplayConduit):
     """
 
     def __init__(self):
-        super().__init__()
+        super(_InsolePreviewConduit, self).__init__()
         self.mesh = None
         self._material = Rhino.Display.DisplayMaterial()
         self._material.Diffuse = System.Drawing.Color.FromArgb(100, 0, 120, 255)
@@ -191,12 +193,14 @@ def _sole_z_at(last_brep, x, y, z_start):
 def _build_insole_mesh(last_brep, outline, total_thickness):
     """Build the insole as a Rhino.Geometry.Mesh.
 
-    Top surface conforms to the shoe last sole (ray-shot Z values).
-    Bottom surface is a flat plane at z_bottom = min(sole_z) - total_thickness.
+    Creates a planar mesh from the outline curve using Rhino's mesher,
+    then projects vertices onto the shoe last sole via ray-shooting.
+    Bottom surface is a flat plane at z_bottom = min(sole_z) - thickness.
     Side walls connect top perimeter to bottom perimeter.
 
     Returns a Mesh or None on failure.
     """
+    tol = sc.doc.ModelAbsoluteTolerance
     brep_bbox = last_brep.GetBoundingBox(True)
     if not brep_bbox.IsValid:
         return None
@@ -208,95 +212,92 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
         z = _sole_z_at(last_brep, x, y, z_start)
         return z if z is not None else fallback_z
 
-    # --- Step 1: Sample outline perimeter ---
-    N_PERIM = 80
-    div_params = outline.DivideByCount(N_PERIM, True)
-    if div_params is None or len(div_params) < 10:
+    # --- Step 1: Create a planar Brep from the outline ---
+    planar_breps = rg.Brep.CreatePlanarBreps(outline, tol)
+    if planar_breps is None or len(planar_breps) == 0:
+        return None
+    planar_brep = planar_breps[0]
+
+    # --- Step 2: Mesh the planar Brep with Rhino's mesher ---
+    # Use fine meshing for a smooth, uniform triangulation
+    mp = rg.MeshingParameters.DefaultAnalysisMesh
+    mp.MaximumEdgeLength = 3.0   # ~3mm max edge for smooth surface
+    mp.MinimumEdgeLength = 1.0
+    mp.GridAspectRatio = 1.0     # keep triangles roughly equilateral
+    mp.SimplePlanes = False
+
+    flat_meshes = rg.Mesh.CreateFromBrep(planar_brep, mp)
+    if flat_meshes is None or len(flat_meshes) == 0:
+        return None
+    flat_mesh = flat_meshes[0]
+
+    if flat_mesh.Vertices.Count < 4:
         return None
 
-    perim_xy = []
-    for t in div_params:
-        pt = outline.PointAt(t)
-        perim_xy.append((pt.X, pt.Y))
-
-    # --- Step 2: Compute centroid ---
-    area_props = rg.AreaMassProperties.Compute(outline)
-    if area_props is None:
-        return None
-    centroid = area_props.Centroid
-
-    # --- Step 3: Build concentric rings and collect sole Z values ---
-    ring_fractions = [0.0, 0.20, 0.40, 0.60, 0.80]
-    rings = []
+    # --- Step 3: Project each vertex onto the sole surface ---
     all_z = []
+    for i in range(flat_mesh.Vertices.Count):
+        v = flat_mesh.Vertices[i]
+        z = sole_z(v.X, v.Y)
+        all_z.append(z)
 
-    for frac in ring_fractions:
-        ring = []
-        for px, py in perim_xy:
-            x = px + frac * (centroid.X - px)
-            y = py + frac * (centroid.Y - py)
-            z = sole_z(x, y)
-            ring.append((x, y, z))
-            all_z.append(z)
-        rings.append(ring)
-
-    cz = sole_z(centroid.X, centroid.Y)
-    all_z.append(cz)
-
-    # Flat bottom plane at the lowest sole point minus thickness
     z_bottom = min(all_z) - total_thickness
 
-    # --- Step 4: Build mesh vertices ---
+    # --- Step 4: Build the final mesh with top, bottom, and side walls ---
     mesh = rg.Mesh()
-    ring_top = []
-    ring_bot = []
+    n_verts = flat_mesh.Vertices.Count
 
-    for ring in rings:
-        row_top = []
-        row_bot = []
-        for x, y, z in ring:
-            ti = mesh.Vertices.Add(x, y, z)
-            bi = mesh.Vertices.Add(x, y, z_bottom)
-            row_top.append(ti)
-            row_bot.append(bi)
-        ring_top.append(row_top)
-        ring_bot.append(row_bot)
+    # Add top vertices (projected onto sole)
+    for i in range(n_verts):
+        v = flat_mesh.Vertices[i]
+        mesh.Vertices.Add(v.X, v.Y, all_z[i])
 
-    ct = mesh.Vertices.Add(centroid.X, centroid.Y, cz)
-    cb = mesh.Vertices.Add(centroid.X, centroid.Y, z_bottom)
+    # Add bottom vertices (flat plane)
+    for i in range(n_verts):
+        v = flat_mesh.Vertices[i]
+        mesh.Vertices.Add(v.X, v.Y, z_bottom)
 
-    n = len(perim_xy)
+    # Top faces (same topology as the planar mesh)
+    for fi in range(flat_mesh.Faces.Count):
+        f = flat_mesh.Faces[fi]
+        if f.IsQuad:
+            mesh.Faces.AddFace(f.A, f.B, f.C, f.D)
+        else:
+            mesh.Faces.AddFace(f.A, f.B, f.C)
 
-    # --- Step 5: Quad faces between consecutive rings ---
-    for r in range(len(rings) - 1):
-        ot = ring_top[r]
-        ob = ring_bot[r]
-        it_ = ring_top[r + 1]
-        ib = ring_bot[r + 1]
-        for i in range(n):
-            j = (i + 1) % n
-            mesh.Faces.AddFace(ot[i], ot[j], it_[j], it_[i])
-            mesh.Faces.AddFace(ob[i], ib[i], ib[j], ob[j])
+    # Bottom faces (reversed winding for outward normals)
+    for fi in range(flat_mesh.Faces.Count):
+        f = flat_mesh.Faces[fi]
+        if f.IsQuad:
+            mesh.Faces.AddFace(
+                f.A + n_verts, f.D + n_verts,
+                f.C + n_verts, f.B + n_verts,
+            )
+        else:
+            mesh.Faces.AddFace(
+                f.A + n_verts, f.C + n_verts, f.B + n_verts,
+            )
 
-    # --- Step 6: Triangle fan from innermost ring to centroid ---
-    inner_t = ring_top[-1]
-    inner_b = ring_bot[-1]
-    for i in range(n):
-        j = (i + 1) % n
-        mesh.Faces.AddFace(inner_t[i], inner_t[j], ct)
-        mesh.Faces.AddFace(inner_b[i], cb, inner_b[j])
+    # --- Step 5: Side walls from naked edges (boundary edges) ---
+    # Naked edges are boundary edges of the flat mesh — the outline perimeter
+    boundary_edges = []
+    top = flat_mesh.TopologyEdges
+    for ei in range(top.Count):
+        conn_faces = top.GetConnectedFaces(ei)
+        if conn_faces is not None and len(conn_faces) == 1:
+            edge_verts = top.GetTopologyVertices(ei)
+            # Map topology vertex indices to mesh vertex indices
+            a = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.I)[0]
+            b = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.J)[0]
+            boundary_edges.append((a, b))
 
-    # --- Step 7: Side walls on outermost ring (perimeter) ---
-    outer_t = ring_top[0]
-    outer_b = ring_bot[0]
-    for i in range(n):
-        j = (i + 1) % n
-        mesh.Faces.AddFace(outer_t[i], outer_b[i], outer_b[j], outer_t[j])
+    for a, b in boundary_edges:
+        # Quad: top_a, top_b, bottom_b, bottom_a
+        mesh.Faces.AddFace(a, b, b + n_verts, a + n_verts)
 
-    # --- Step 8: Finalise mesh ---
+    # --- Step 6: Finalise ---
     mesh.Normals.ComputeNormals()
     mesh.Compact()
-
     if not mesh.IsValid:
         mesh.RebuildNormals()
 
