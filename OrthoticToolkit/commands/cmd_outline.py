@@ -27,6 +27,7 @@ from geometry.layer_utils import ensure_layer
 PANEL_GUID = System.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")
 OT_OUTLINE_LAYER = "OT_Outline"
 OT_INSOLE_LAYER = "OT_Insole"
+OT_BOTTOM_OUTLINE_LAYER = "OT_BottomOutline"
 
 # ---------------------------------------------------------------------------
 # Display conduit for live insole preview
@@ -204,8 +205,7 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     Creates a planar mesh from the outline curve using Rhino's mesher,
     then projects vertices onto the shoe last sole via ray-shooting.
     Bottom surface is a flat plane at z_bottom = min(sole_z) - thickness.
-    If bottom_outline is provided and differs from outline, boundary
-    vertices on the bottom are moved to match it (creating a flare).
+    Side walls connect top perimeter to bottom perimeter.
 
     Returns a Mesh or None on failure.
     """
@@ -221,15 +221,18 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
         z = _sole_z_at(last_brep, x, y, z_start)
         return z if z is not None else fallback_z
 
+    # --- Step 1: Create a planar Brep from the outline ---
     planar_breps = rg.Brep.CreatePlanarBreps(outline, tol)
     if planar_breps is None or len(planar_breps) == 0:
         return None
     planar_brep = planar_breps[0]
 
+    # --- Step 2: Mesh the planar Brep with Rhino's mesher ---
+    # Use fine meshing for a smooth, uniform triangulation
     mp = rg.MeshingParameters.DefaultAnalysisMesh
-    mp.MaximumEdgeLength = 3.0
+    mp.MaximumEdgeLength = 3.0   # ~3mm max edge for smooth surface
     mp.MinimumEdgeLength = 1.0
-    mp.GridAspectRatio = 1.0
+    mp.GridAspectRatio = 1.0     # keep triangles roughly equilateral
     mp.SimplePlanes = False
 
     flat_meshes = rg.Mesh.CreateFromBrep(planar_brep, mp)
@@ -240,6 +243,7 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     if flat_mesh.Vertices.Count < 4:
         return None
 
+    # --- Step 3: Project each vertex onto the sole surface ---
     all_z = []
     for i in range(flat_mesh.Vertices.Count):
         v = flat_mesh.Vertices[i]
@@ -248,17 +252,21 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
 
     z_bottom = min(all_z) - total_thickness
 
+    # --- Step 4: Build the final mesh with top, bottom, and side walls ---
     mesh = rg.Mesh()
     n_verts = flat_mesh.Vertices.Count
 
+    # Add top vertices (projected onto sole)
     for i in range(n_verts):
         v = flat_mesh.Vertices[i]
         mesh.Vertices.Add(v.X, v.Y, all_z[i])
 
+    # Add bottom vertices (flat plane)
     for i in range(n_verts):
         v = flat_mesh.Vertices[i]
         mesh.Vertices.Add(v.X, v.Y, z_bottom)
 
+    # Top faces (same topology as the planar mesh)
     for fi in range(flat_mesh.Faces.Count):
         f = flat_mesh.Faces[fi]
         if f.IsQuad:
@@ -266,6 +274,7 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
         else:
             mesh.Faces.AddFace(f.A, f.B, f.C)
 
+    # Bottom faces (reversed winding for outward normals)
     for fi in range(flat_mesh.Faces.Count):
         f = flat_mesh.Faces[fi]
         if f.IsQuad:
@@ -278,14 +287,16 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
                 f.A + n_verts, f.C + n_verts, f.B + n_verts,
             )
 
-    # Find boundary edges and vertices
+    # --- Step 5: Side walls from naked edges (boundary edges) ---
+    # Naked edges are boundary edges of the flat mesh — the outline perimeter
     boundary_edges = []
     boundary_verts = set()
-    topo = flat_mesh.TopologyEdges
-    for ei in range(topo.Count):
-        conn_faces = topo.GetConnectedFaces(ei)
+    top = flat_mesh.TopologyEdges
+    for ei in range(top.Count):
+        conn_faces = top.GetConnectedFaces(ei)
         if conn_faces is not None and len(conn_faces) == 1:
-            edge_verts = topo.GetTopologyVertices(ei)
+            edge_verts = top.GetTopologyVertices(ei)
+            # Map topology vertex indices to mesh vertex indices
             a = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.I)[0]
             b = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.J)[0]
             boundary_edges.append((a, b))
@@ -303,8 +314,10 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
                 mesh.Vertices.SetVertex(vi + n_verts, bp.X, bp.Y, z_bottom)
 
     for a, b in boundary_edges:
+        # Quad: top_a, top_b, bottom_b, bottom_a
         mesh.Faces.AddFace(a, b, b + n_verts, a + n_verts)
 
+    # --- Step 6: Finalise ---
     mesh.Normals.ComputeNormals()
     mesh.Compact()
     if not mesh.IsValid:
@@ -313,14 +326,12 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     return mesh
 
 
-def _create_conforming_insole(last_brep, outline, total_thickness,
-                              bottom_outline=None):
+def _create_conforming_insole(last_brep, outline, total_thickness, bottom_outline=None):
     """Create an insole Brep whose top conforms to the sole, bottom is flat.
 
     Returns a Brep or None on failure.
     """
-    mesh = _build_insole_mesh(last_brep, outline, total_thickness,
-                              bottom_outline)
+    mesh = _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline)
     if mesh is None:
         return None
 
@@ -342,9 +353,6 @@ def _create_flat_insole(outline, total_thickness):
     return capped if capped is not None else brep
 
 
-OT_BOTTOM_OUTLINE_LAYER = "OT_BottomOutline"
-
-
 def _remove_previous_objects(doc):
     """Delete previous outline, bottom outline, and insole objects."""
     for attr in ("insole_outline_guid", "insole_bottom_outline_guid",
@@ -356,12 +364,7 @@ def _remove_previous_objects(doc):
 
 
 def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
-    """Build the insole mesh and add all objects to the document.
-
-    Creates the insole from top_outline (and optional bottom_outline),
-    adds curves and mesh to the document with grips enabled.
-    Returns True on success.
-    """
+    """Build the insole and add all objects to the document with grips enabled."""
     Rhino.RhinoApp.WriteLine(
         "Orthotic Toolkit: Creating sole-conforming insole..."
     )
@@ -389,10 +392,9 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if conforming:
         state.insole_top_surface = insole_brep
 
-    # Remove previous objects
     _remove_previous_objects(doc)
 
-    # Add top outline to OT_Outline layer with grips
+    # Add top outline with grips enabled
     outline_layer = ensure_layer(OT_OUTLINE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = outline_layer
@@ -420,7 +422,6 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     else:
         bot_curve = top_outline.DuplicateCurve()
 
-    # Move bottom curve to z_bottom
     xform = rg.Transform.Translation(0, 0, z_bottom)
     bot_curve.Transform(xform)
 
@@ -434,7 +435,7 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole Brep to OT_Insole layer
+    # Add insole Brep
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
@@ -446,10 +447,7 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
 
 
 def apply_edited_outline():
-    """Read back edited outline curves and rebuild the insole.
-
-    Called from the panel's Apply Outline button.
-    """
+    """Read back edited outline curves and rebuild the insole."""
     doc = sc.doc
 
     if state.active_last_brep is None:
@@ -458,7 +456,6 @@ def apply_edited_outline():
         )
         return
 
-    # Read back the top outline curve
     top_outline = None
     if state.insole_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_outline_guid)
@@ -472,20 +469,16 @@ def apply_edited_outline():
         )
         return
 
-    # Read back the bottom outline curve (projected to XY for shape)
     bottom_outline = None
     if state.insole_bottom_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_bottom_outline_guid)
         if obj is not None:
             bot_crv = obj.Geometry.DuplicateCurve()
-            # Project to Z=0 for XY shape comparison
             flat = rg.Curve.ProjectToPlane(bot_crv, rg.Plane.WorldXY)
             if flat is not None:
                 bottom_outline = flat
 
-    # Disable live preview
     disable_insole_preview()
-
     state.insole_outline = top_outline
 
     total_thickness = (
@@ -563,7 +556,6 @@ class OT_GenerateOutline(rc.Command):
         if rebuilt is not None:
             outline = rebuilt
 
-        # Store outline in state
         state.insole_outline = outline
 
         total_thickness = (
@@ -572,7 +564,6 @@ class OT_GenerateOutline(rc.Command):
             + state.base_thickness_mm
         )
 
-        # Build the insole
         result = _build_and_add_insole(doc, outline, None, total_thickness)
         if not result:
             _show_panel_warning("Insole creation failed.")
@@ -580,10 +571,6 @@ class OT_GenerateOutline(rc.Command):
 
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: Insole outline generated. "
-            "Offset: {:.1f}mm, Toe ext: {:.1f}mm, Heel ext: {:.1f}mm. "
-            "Grips enabled - drag control points to edit, "
-            "then click Apply Outline.".format(
-                perimeter_offset, toe_ext, heel_ext
-            )
+            "Grips enabled - drag control points then click Apply Outline."
         )
         return rc.Result.Success
