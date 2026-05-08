@@ -150,6 +150,7 @@ def convert_command_file(src_path, command_name):
     output_lines.append("")
     output_lines.append("")
     output_lines.append("def RunCommand(is_interactive):")
+    output_lines.append("    doc = sc.doc")
 
     # Process body: replace 'doc' references with 'scriptcontext.doc' / 'sc.doc'
     # and convert return values
