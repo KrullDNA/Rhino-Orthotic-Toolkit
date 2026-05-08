@@ -121,9 +121,23 @@ otherwise default 20.)
 
 **To set a type hint:**
 - Right-click the input name → **Type hint** → pick from the list.
-- For `Last` / `OverrideOutline` / `OverrideBottom`: pick **Brep** /
-  **Curve** / **Curve**.
-- For numeric inputs: pick **float** (or **Number**).
+- Pick exactly one of these for each input:
+
+| Input             | Type hint  |
+|-------------------|------------|
+| `Last`            | **Brep**   |
+| `OverrideOutline` | **Curve**  |
+| `OverrideBottom`  | **Curve**  |
+| `PerimeterOffset` | **float**  |
+| `ToeExtension`    | **float**  |
+| `HeelExtension`   | **float**  |
+| `CoverThk`        | **float**  |
+| `ShellThk`        | **float**  |
+| `BaseThk`         | **float**  |
+| `MaxEdge`         | **float**  |
+| `MinEdge`         | **float**  |
+
+If your GH version shows `Number` instead of `float`, pick that — same thing.
 
 **To set access:**
 - Right-click the input name → **Access** → **Item Access**.

@@ -128,9 +128,23 @@ Grasshopper-ին «անդրադարձնել»։
 
 **Type hint դնելու համար.**
 - Աջ-սեղմէ՛ մուտքին անունը → **Type hint** → ընտրէ՛ ցանկէն։
-- `Last` / `OverrideOutline` / `OverrideBottom`-ի համար՝ **Brep**,
-  **Curve**, **Curve**։
-- Թիւերուն համար՝ **float**։
+- Ամէն մուտքի համար ընտրէ՛ հետեւեալներէն մէկը.
+
+| Մուտք             | Type hint  |
+|-------------------|------------|
+| `Last`            | **Brep**   |
+| `OverrideOutline` | **Curve**  |
+| `OverrideBottom`  | **Curve**  |
+| `PerimeterOffset` | **float**  |
+| `ToeExtension`    | **float**  |
+| `HeelExtension`   | **float**  |
+| `CoverThk`        | **float**  |
+| `ShellThk`        | **float**  |
+| `BaseThk`         | **float**  |
+| `MaxEdge`         | **float**  |
+| `MinEdge`         | **float**  |
+
+Եթէ քու GH տարբերակդ `float`-ի փոխարէն `Number` ցոյց կու տայ՝ նոյն բանն է։
 
 **Access դնելու համար.**
 - Աջ-սեղմէ՛ մուտքին անունը → **Access** → **Item Access**։
