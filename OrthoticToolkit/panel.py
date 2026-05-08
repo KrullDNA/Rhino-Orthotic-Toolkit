@@ -447,6 +447,14 @@ class OrthoticPanel(ef.Panel):
         btn_apply.Click += self._on_apply_outline
         layout.Add(btn_apply)
 
+        btn_reset = ef.Button()
+        btn_reset.Text = "Reset Outline"
+        btn_reset.ToolTip = (
+            "Discard outline edits and regenerate from the shoe last."
+        )
+        btn_reset.Click += self._on_reset_outline
+        layout.Add(btn_reset)
+
         layout.AddSpace()
         page.Content = layout
         return page
@@ -477,6 +485,14 @@ class OrthoticPanel(ef.Panel):
             Rhino.RhinoApp.WriteLine(
                 "Orthotic Toolkit: Apply outline error - {}".format(ex)
             )
+
+    def _on_reset_outline(self, sender, e):
+        self._clear_tab_warning("Outline")
+        p = self.get_outline_params()
+        state.perimeter_offset = p[0]
+        state.toe_extension = p[1]
+        state.heel_extension = p[2]
+        Rhino.RhinoApp.RunScript("OT_GenerateOutline", False)
 
     def get_outline_params(self):
         return (
