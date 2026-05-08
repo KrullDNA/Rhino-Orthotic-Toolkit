@@ -136,8 +136,13 @@ otherwise default 20.)
 | `BaseThk`         | **float**  |
 | `MaxEdge`         | **float**  |
 | `MinEdge`         | **float**  |
+| `RebuildCount`    | **int**    |
 
 If your GH version shows `Number` instead of `float`, pick that — same thing.
+
+`RebuildCount` is optional. Leave it unwired and the script uses 20 (a good
+default). Add it only if you want to tune how many control points the output
+curves have — feed it from a slider like `20..8..60`.
 
 **To set access:**
 - Right-click the input name → **Access** → **Item Access**.
