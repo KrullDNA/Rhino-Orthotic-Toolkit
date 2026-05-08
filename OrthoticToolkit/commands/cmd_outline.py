@@ -506,17 +506,23 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole as mesh — set blue color and lock it
+    # Convert mesh to SubD and add to document
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
     attrs2.ColorSource = rd.ObjectColorSource.ColorFromObject
     attrs2.ObjectColor = System.Drawing.Color.FromArgb(0, 120, 255)
-    state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
-    mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
-    if mesh_obj is not None:
-        mesh_obj.Attributes.Mode = rd.ObjectMode.Locked
-        mesh_obj.CommitChanges()
+
+    subd = rg.SubD.CreateFromMesh(insole_mesh)
+    if subd is not None and subd.IsValid:
+        state.insole_brep_guid = doc.Objects.AddSubD(subd, attrs2)
+    else:
+        state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
+
+    insole_obj = doc.Objects.FindId(state.insole_brep_guid)
+    if insole_obj is not None:
+        insole_obj.Attributes.Mode = rd.ObjectMode.Locked
+        insole_obj.CommitChanges()
 
     doc.Views.Redraw()
     return True
@@ -645,17 +651,23 @@ def apply_edited_outline():
         doc.Objects.Delete(state.insole_brep_guid, True)
         state.insole_brep_guid = None
 
-    # Add new insole mesh — set blue color and lock it
+    # Convert to SubD and add — set blue color and lock it
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = insole_layer
     attrs.ColorSource = rd.ObjectColorSource.ColorFromObject
     attrs.ObjectColor = System.Drawing.Color.FromArgb(0, 120, 255)
-    state.insole_brep_guid = doc.Objects.AddMesh(new_mesh, attrs)
-    mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
-    if mesh_obj is not None:
-        mesh_obj.Attributes.Mode = rd.ObjectMode.Locked
-        mesh_obj.CommitChanges()
+
+    subd = rg.SubD.CreateFromMesh(new_mesh)
+    if subd is not None and subd.IsValid:
+        state.insole_brep_guid = doc.Objects.AddSubD(subd, attrs)
+    else:
+        state.insole_brep_guid = doc.Objects.AddMesh(new_mesh, attrs)
+
+    insole_obj = doc.Objects.FindId(state.insole_brep_guid)
+    if insole_obj is not None:
+        insole_obj.Attributes.Mode = rd.ObjectMode.Locked
+        insole_obj.CommitChanges()
 
     state.insole_outline = flat_top
     state.insole_brep = new_mesh
