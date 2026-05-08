@@ -517,11 +517,111 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     return True
 
 
+def _build_mesh_from_curves(top_curve, bot_curve):
+    """Build an insole mesh directly from two 3D boundary curves.
+
+    Samples points along both curves at matching parameters, then
+    creates a mesh with top/bottom faces and side walls.  This is
+    used by Apply Outline so the insole matches the edited curves
+    exactly (no re-projection onto the sole).
+
+    Returns a Mesh or None.
+    """
+    tol = sc.doc.ModelAbsoluteTolerance
+
+    # Flatten top curve to XY to create the planar mesh for triangulation
+    flat_top = rg.Curve.ProjectToPlane(top_curve, rg.Plane.WorldXY)
+    if flat_top is None:
+        return None
+
+    planar_breps = rg.Brep.CreatePlanarBreps(flat_top, tol)
+    if planar_breps is None or len(planar_breps) == 0:
+        return None
+
+    mp = rg.MeshingParameters.DefaultAnalysisMesh
+    mp.MaximumEdgeLength = 3.0
+    mp.MinimumEdgeLength = 1.0
+    mp.GridAspectRatio = 1.0
+    mp.SimplePlanes = False
+
+    flat_meshes = rg.Mesh.CreateFromBrep(planar_breps[0], mp)
+    if flat_meshes is None or len(flat_meshes) == 0:
+        return None
+    flat_mesh = flat_meshes[0]
+
+    if flat_mesh.Vertices.Count < 4:
+        return None
+
+    n_verts = flat_mesh.Vertices.Count
+
+    # For each vertex, find its Z from the top_curve (closest point)
+    # and from the bot_curve (closest point)
+    mesh = rg.Mesh()
+
+    for i in range(n_verts):
+        v = flat_mesh.Vertices[i]
+        pt_xy = rg.Point3d(v.X, v.Y, 0)
+        ok, t = top_curve.ClosestPoint(pt_xy)
+        if ok:
+            tp = top_curve.PointAt(t)
+            mesh.Vertices.Add(tp.X, tp.Y, tp.Z)
+        else:
+            mesh.Vertices.Add(v.X, v.Y, 0)
+
+    for i in range(n_verts):
+        v = flat_mesh.Vertices[i]
+        pt_xy = rg.Point3d(v.X, v.Y, 0)
+        ok, t = bot_curve.ClosestPoint(pt_xy)
+        if ok:
+            bp = bot_curve.PointAt(t)
+            mesh.Vertices.Add(bp.X, bp.Y, bp.Z)
+        else:
+            mesh.Vertices.Add(v.X, v.Y, -10)
+
+    # Top faces
+    for fi in range(flat_mesh.Faces.Count):
+        f = flat_mesh.Faces[fi]
+        if f.IsQuad:
+            mesh.Faces.AddFace(f.A, f.B, f.C, f.D)
+        else:
+            mesh.Faces.AddFace(f.A, f.B, f.C)
+
+    # Bottom faces (reversed winding)
+    for fi in range(flat_mesh.Faces.Count):
+        f = flat_mesh.Faces[fi]
+        if f.IsQuad:
+            mesh.Faces.AddFace(
+                f.A + n_verts, f.D + n_verts,
+                f.C + n_verts, f.B + n_verts,
+            )
+        else:
+            mesh.Faces.AddFace(
+                f.A + n_verts, f.C + n_verts, f.B + n_verts,
+            )
+
+    # Side walls from naked edges of flat_mesh
+    top_edges = flat_mesh.TopologyEdges
+    for ei in range(top_edges.Count):
+        conn = top_edges.GetConnectedFaces(ei)
+        if conn is not None and len(conn) == 1:
+            ev = top_edges.GetTopologyVertices(ei)
+            a = flat_mesh.TopologyVertices.MeshVertexIndices(ev.I)[0]
+            b = flat_mesh.TopologyVertices.MeshVertexIndices(ev.J)[0]
+            mesh.Faces.AddFace(a, b, b + n_verts, a + n_verts)
+
+    mesh.Normals.ComputeNormals()
+    mesh.Compact()
+    if not mesh.IsValid:
+        mesh.RebuildNormals()
+
+    return mesh
+
+
 def apply_edited_outline():
     """Read back edited outline curves and rebuild the insole.
 
-    Commits any pending grip edits, reads the curves, flattens the
-    top curve to XY for the mesh builder, and rebuilds everything.
+    Builds a new mesh directly from the edited 3D curves so the
+    insole shape matches where the user dragged the grips.
     """
     doc = sc.doc
 
@@ -531,7 +631,7 @@ def apply_edited_outline():
         )
         return
 
-    # Commit grip edits by turning grips off then reading geometry
+    # Commit pending grip edits
     for attr in ("insole_outline_guid", "insole_bottom_outline_guid"):
         guid = getattr(state, attr, None)
         if guid is not None:
@@ -539,53 +639,64 @@ def apply_edited_outline():
             if obj is not None and obj.GripsOn:
                 obj.CommitChanges()
 
-    top_3d = None
+    top_curve = None
     if state.insole_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_outline_guid)
         if obj is not None:
-            top_3d = obj.Geometry.DuplicateCurve()
+            top_curve = obj.Geometry.DuplicateCurve()
 
-    if top_3d is None:
+    if top_curve is None:
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: No outline curve found. "
             "Run Generate Outline first."
         )
         return
 
-    # Flatten the edited 3D top curve back to XY for the mesh builder
-    top_outline = rg.Curve.ProjectToPlane(top_3d, rg.Plane.WorldXY)
-    if top_outline is None:
-        top_outline = top_3d
-
-    bottom_outline = None
+    bot_curve = None
     if state.insole_bottom_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_bottom_outline_guid)
         if obj is not None:
-            bot_crv = obj.Geometry.DuplicateCurve()
-            flat = rg.Curve.ProjectToPlane(bot_crv, rg.Plane.WorldXY)
-            if flat is not None:
-                bottom_outline = flat
+            bot_curve = obj.Geometry.DuplicateCurve()
+
+    if bot_curve is None:
+        bot_curve = top_curve.DuplicateCurve()
+        xform = rg.Transform.Translation(0, 0, -10)
+        bot_curve.Transform(xform)
 
     disable_insole_preview()
-    state.insole_outline = top_outline
 
-    total_thickness = (
-        state.cover_thickness_mm
-        + state.shell_thickness_mm
-        + state.base_thickness_mm
-    )
+    # Build mesh directly from the two edited 3D curves
+    new_mesh = _build_mesh_from_curves(top_curve, bot_curve)
+    if new_mesh is None:
+        Rhino.RhinoApp.WriteLine(
+            "Orthotic Toolkit: Failed to rebuild insole from edited curves."
+        )
+        return
 
-    result = _build_and_add_insole(
-        doc, top_outline, bottom_outline, total_thickness,
+    # Remove old insole brep/mesh only (keep the curves)
+    if state.insole_brep_guid is not None:
+        doc.Objects.Delete(state.insole_brep_guid, True)
+        state.insole_brep_guid = None
+
+    # Add new insole mesh
+    insole_layer = ensure_layer(OT_INSOLE_LAYER)
+    attrs = rd.ObjectAttributes()
+    attrs.LayerIndex = insole_layer
+    attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
+    state.insole_brep_guid = doc.Objects.AddMesh(new_mesh, attrs)
+
+    # Store the flat XY outline for other tools
+    flat = rg.Curve.ProjectToPlane(top_curve, rg.Plane.WorldXY)
+    if flat is not None:
+        state.insole_outline = flat
+
+    state.insole_brep = new_mesh
+
+    doc.Views.Redraw()
+
+    Rhino.RhinoApp.WriteLine(
+        "Orthotic Toolkit: Insole rebuilt from edited outlines."
     )
-    if result:
-        Rhino.RhinoApp.WriteLine(
-            "Orthotic Toolkit: Insole rebuilt from edited outlines."
-        )
-    else:
-        Rhino.RhinoApp.WriteLine(
-            "Orthotic Toolkit: Failed to rebuild insole."
-        )
 
 
 class OT_GenerateOutline(rc.Command):
