@@ -186,9 +186,8 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
     """Build the insole as a Rhino.Geometry.Mesh.
 
     Creates a planar mesh from the outline curve using Rhino's mesher,
-    then projects vertices onto the shoe last sole via ray-shooting.
-    Bottom surface is a flat plane at z_bottom = min(sole_z) - thickness.
-    Side walls connect top perimeter to bottom perimeter.
+    then projects vertices onto the shoe last sole via ray-shooting
+    against a meshed copy of the last (avoids native crashes on Sub-D breps).
 
     Returns a Mesh or None on failure.
     """
@@ -203,7 +202,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
     Rhino.RhinoApp.WriteLine("OT_DEBUG: Step 1 - CreatePlanarBreps")
 
-    # --- Step 1: Create a planar Brep from the outline ---
     planar_breps = rg.Brep.CreatePlanarBreps(outline, tol)
     if planar_breps is None or len(planar_breps) == 0:
         Rhino.RhinoApp.WriteLine("OT_DEBUG: planar breps failed")
@@ -212,7 +210,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
     Rhino.RhinoApp.WriteLine("OT_DEBUG: Step 2 - Meshing planar brep")
 
-    # --- Step 2: Mesh the planar Brep with Rhino's mesher ---
     mp = rg.MeshingParameters.DefaultAnalysisMesh
     mp.MaximumEdgeLength = 3.0
     mp.MinimumEdgeLength = 1.0
@@ -229,9 +226,23 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
         Rhino.RhinoApp.WriteLine("OT_DEBUG: too few vertices")
         return None
 
+    Rhino.RhinoApp.WriteLine("OT_DEBUG: Step 2b - Meshing shoe last for ray-shoot")
+
+    # Convert the brep to a mesh for safe ray-shooting
+    last_mp = rg.MeshingParameters.Default
+    last_mp.MaximumEdgeLength = 2.0
+    last_meshes = rg.Mesh.CreateFromBrep(last_brep, last_mp)
+    if last_meshes is None or len(last_meshes) == 0:
+        Rhino.RhinoApp.WriteLine("OT_DEBUG: last mesh conversion failed")
+        return None
+
+    last_mesh = rg.Mesh()
+    for m in last_meshes:
+        last_mesh.Append(m)
+
     Rhino.RhinoApp.WriteLine(
-        "OT_DEBUG: Step 3 - Ray-shooting {} vertices".format(
-            flat_mesh.Vertices.Count
+        "OT_DEBUG: Step 3 - Ray-shooting {} vertices against mesh ({} faces)".format(
+            flat_mesh.Vertices.Count, last_mesh.Faces.Count
         )
     )
 
@@ -241,9 +252,10 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
         v = flat_mesh.Vertices[i]
         origin = rg.Point3d(v.X, v.Y, z_start)
         ray = rg.Ray3d(origin, rg.Vector3d(0, 0, 1))
-        hits = rg.Intersect.Intersection.RayShoot(ray, [last_brep], 1)
-        if hits is not None and len(hits) > 0:
-            all_z.append(hits[0].Z)
+        hit_t = rg.Intersect.Intersection.MeshRay(last_mesh, ray)
+        if hit_t >= 0.0:
+            hit_pt = ray.PointAt(hit_t)
+            all_z.append(hit_pt.Z)
         else:
             all_z.append(fallback_z)
 
@@ -251,7 +263,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
     z_bottom = min(all_z) - total_thickness
 
-    # --- Step 4: Build the final mesh with top, bottom, and side walls ---
     mesh = rg.Mesh()
     n_verts = flat_mesh.Vertices.Count
 
@@ -284,7 +295,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
     Rhino.RhinoApp.WriteLine("OT_DEBUG: Step 5 - Side walls")
 
-    # --- Step 5: Side walls from naked edges (boundary edges) ---
     boundary_edges = []
     top = flat_mesh.TopologyEdges
     for ei in range(top.Count):
@@ -300,7 +310,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
     Rhino.RhinoApp.WriteLine("OT_DEBUG: Step 6 - Finalize")
 
-    # --- Step 6: Finalise ---
     mesh.Normals.ComputeNormals()
     mesh.Compact()
     if not mesh.IsValid:
