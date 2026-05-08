@@ -297,16 +297,11 @@ def _build_insole_mesh(last_brep, outline, total_thickness):
 
 
 def _create_conforming_insole(last_brep, outline, total_thickness):
-    """Create an insole Brep whose top conforms to the sole, bottom is flat.
+    """Create an insole mesh whose top conforms to the sole, bottom is flat.
 
-    Returns a Brep or None on failure.
+    Returns a Mesh or None on failure.
     """
-    mesh = _build_insole_mesh(last_brep, outline, total_thickness)
-    if mesh is None:
-        return None
-
-    brep_result = rg.Brep.CreateFromMesh(mesh, False)
-    return brep_result
+    return _build_insole_mesh(last_brep, outline, total_thickness)
 
 
 def _create_flat_insole(outline, total_thickness):
@@ -389,30 +384,29 @@ class OT_GenerateOutline(rc.Command):
             "Orthotic Toolkit: Creating sole-conforming insole..."
         )
 
-        insole_brep = _create_conforming_insole(
-            state.active_last_brep, outline, total_thickness
-        )
+        try:
+            insole_mesh = _create_conforming_insole(
+                state.active_last_brep, outline, total_thickness
+            )
+        except Exception as ex:
+            Rhino.RhinoApp.WriteLine(
+                "Orthotic Toolkit: Conforming insole error - {}".format(ex)
+            )
+            insole_mesh = None
 
-        conforming = insole_brep is not None
+        conforming = insole_mesh is not None
         if not conforming:
             Rhino.RhinoApp.WriteLine(
                 "Orthotic Toolkit: Conforming approach unavailable, "
                 "using flat extrusion."
             )
             insole_brep = _create_flat_insole(outline, total_thickness)
-
-        if insole_brep is None:
-            Rhino.RhinoApp.WriteLine(
-                "Orthotic Toolkit: Failed to create insole solid."
-            )
-            _show_panel_warning("Insole creation failed.")
-            return rc.Result.Failure
-
-        state.insole_brep = insole_brep
-
-        # Also store the top surface for later use by thickness layers
-        if conforming:
-            state.insole_top_surface = insole_brep
+            if insole_brep is None:
+                Rhino.RhinoApp.WriteLine(
+                    "Orthotic Toolkit: Failed to create insole solid."
+                )
+                _show_panel_warning("Insole creation failed.")
+                return rc.Result.Failure
 
         # Remove previous outline/insole objects if they exist
         if state.insole_outline_guid is not None:
@@ -429,12 +423,19 @@ class OT_GenerateOutline(rc.Command):
         attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
         state.insole_outline_guid = doc.Objects.AddCurve(outline, attrs)
 
-        # Add insole Brep to OT_Insole layer
+        # Add insole to OT_Insole layer (mesh for conforming, Brep for flat)
         insole_layer = ensure_layer(OT_INSOLE_LAYER)
         attrs2 = rd.ObjectAttributes()
         attrs2.LayerIndex = insole_layer
         attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
-        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
+
+        if conforming:
+            state.insole_brep = insole_mesh
+            state.insole_top_surface = insole_mesh
+            state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
+        else:
+            state.insole_brep = insole_brep
+            state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
 
         doc.Views.Redraw()
 
