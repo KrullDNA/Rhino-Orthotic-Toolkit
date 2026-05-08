@@ -538,13 +538,14 @@ def apply_edited_outline():
         )
         return
 
-    # Commit pending grip edits
+    # Turn grips off to commit grip edits to the actual geometry,
+    # then read the curves, then re-enable grips
     for attr in ("insole_outline_guid", "insole_bottom_outline_guid"):
         guid = getattr(state, attr, None)
         if guid is not None:
             obj = doc.Objects.FindId(guid)
             if obj is not None and obj.GripsOn:
-                obj.CommitChanges()
+                obj.GripsOn = False
 
     top_curve = None
     if state.insole_outline_guid is not None:
