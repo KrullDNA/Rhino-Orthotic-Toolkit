@@ -295,6 +295,10 @@ def convert_panel_to_form(src_path):
         "from commands.cmd_outline import update_insole_preview",
         "from OT_GenerateOutline_cmd import update_insole_preview"
     )
+    source = source.replace(
+        "from commands.cmd_outline import apply_edited_outline",
+        "from OT_GenerateOutline_cmd import apply_edited_outline"
+    )
 
     # Update docstring
     source = source.replace(
