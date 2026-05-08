@@ -506,12 +506,16 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole as mesh (more reliable than Brep.CreateFromMesh for display)
+    # Add insole as mesh — lock it so grips on curves don't move the mesh
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
     attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
     state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
+    mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
+    if mesh_obj is not None:
+        mesh_obj.Attributes.Mode = rd.ObjectMode.Locked
+        mesh_obj.CommitChanges()
 
     doc.Views.Redraw()
     return True
@@ -678,12 +682,16 @@ def apply_edited_outline():
         doc.Objects.Delete(state.insole_brep_guid, True)
         state.insole_brep_guid = None
 
-    # Add new insole mesh
+    # Add new insole mesh — lock it so grip edits don't move the mesh
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = insole_layer
     attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
     state.insole_brep_guid = doc.Objects.AddMesh(new_mesh, attrs)
+    mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
+    if mesh_obj is not None:
+        mesh_obj.Attributes.Mode = rd.ObjectMode.Locked
+        mesh_obj.CommitChanges()
 
     # Store the flat XY outline for other tools
     flat = rg.Curve.ProjectToPlane(top_curve, rg.Plane.WorldXY)
