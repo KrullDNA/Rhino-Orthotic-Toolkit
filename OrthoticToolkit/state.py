@@ -20,6 +20,7 @@ foot_scan_filename = None      # Original filename of imported scan
 insole_outline = None          # Closed planar curve defining insole perimeter
 insole_brep = None             # Current insole solid Brep (built up by tools)
 insole_outline_guid = None     # Guid of outline curve object in document
+insole_bottom_outline_guid = None  # Guid of bottom outline curve in document
 insole_brep_guid = None        # Guid of insole Brep object in document
 
 # --- Thickness Layer State ---
@@ -78,7 +79,7 @@ def reset_all():
     """Reset all state variables back to None or their default values."""
     global active_last_brep, sole_face, footprint_curve, insole_top_surface
     global foot_scan_mesh, foot_scan_filename
-    global insole_outline, insole_brep, insole_outline_guid, insole_brep_guid
+    global insole_outline, insole_brep, insole_outline_guid, insole_bottom_outline_guid, insole_brep_guid
     global cover_thickness_mm, shell_thickness_mm, base_thickness_mm
     global layer_cover, layer_shell, layer_base
     global toe_heel_axis, toe_direction
@@ -105,6 +106,7 @@ def reset_all():
     insole_outline = None
     insole_brep = None
     insole_outline_guid = None
+    insole_bottom_outline_guid = None
     insole_brep_guid = None
 
     # Thickness Layers
