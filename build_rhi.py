@@ -284,16 +284,6 @@ def convert_panel_to_form(src_path):
     source = source.replace("super().__init__()", "super(OrthoticPanel, self).__init__()")
 
     # Fix float format specifiers for IronPython 2.7 compatibility.
-    # IronPython 2.7 raises "Precision not allowed in integer format specifier"
-    # when using {:.1f} or {:.0f} on integer values. Cast to float first.
-    source = source.replace(
-        "val_label.Text = fmt.format(default)",
-        "val_label.Text = fmt.format(float(default))"
-    )
-    source = source.replace(
-        "val_label.Text = fmt.format(val)",
-        "val_label.Text = fmt.format(float(val))"
-    )
     source = source.replace(
         '"Total: {:.1f}mm".format(total)',
         '"Total: {:.1f}mm".format(float(total))'

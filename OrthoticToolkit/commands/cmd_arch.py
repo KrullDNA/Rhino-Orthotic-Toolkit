@@ -23,15 +23,7 @@ OT_INSOLE_LAYER = "OT_Insole"
 
 
 def _get_panel_values():
-    """Read arch parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_arch_params"):
-                    return panel.get_arch_params()
-    except Exception:
-        pass
+    """Read arch parameters from state (kept in sync by panel sliders)."""
     return (
         state.arch_height_mm,
         state.arch_apex_pct,

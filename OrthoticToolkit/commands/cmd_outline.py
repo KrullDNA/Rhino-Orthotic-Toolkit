@@ -153,15 +153,7 @@ def disable_insole_preview():
 
 
 def _get_panel_values():
-    """Read outline parameters from the panel, falling back to state defaults."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_outline_params"):
-                    return panel.get_outline_params()
-    except Exception:
-        pass
+    """Read outline parameters from state (kept in sync by panel sliders)."""
     return state.perimeter_offset, state.toe_extension, state.heel_extension
 
 

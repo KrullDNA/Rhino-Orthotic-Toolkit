@@ -23,15 +23,7 @@ OT_INSOLE_LAYER = "OT_Insole"
 
 
 def _get_panel_values():
-    """Read heel cup parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_heelcup_params"):
-                    return panel.get_heelcup_params()
-    except Exception:
-        pass
+    """Read heel cup parameters from state (kept in sync by panel sliders)."""
     return (
         state.cup_depth_mm,
         state.posterior_angle_deg,

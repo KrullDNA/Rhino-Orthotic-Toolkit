@@ -24,15 +24,7 @@ OT_INSOLE_LAYER = "OT_Insole"
 
 
 def _get_panel_values():
-    """Read posting parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_posting_params"):
-                    return panel.get_posting_params()
-    except Exception:
-        pass
+    """Read posting parameters from state (kept in sync by panel sliders)."""
     return (
         state.rf_medial_deg,
         state.rf_lateral_deg,

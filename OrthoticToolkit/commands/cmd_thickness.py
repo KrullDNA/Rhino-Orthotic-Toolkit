@@ -27,15 +27,7 @@ MIN_THICKNESS_MM = 2.0
 
 
 def _get_panel_values():
-    """Read thickness parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_thickness_params"):
-                    return panel.get_thickness_params()
-    except Exception:
-        pass
+    """Read thickness parameters from state (kept in sync by panel sliders)."""
     return state.cover_thickness_mm, state.shell_thickness_mm, state.base_thickness_mm
 
 
