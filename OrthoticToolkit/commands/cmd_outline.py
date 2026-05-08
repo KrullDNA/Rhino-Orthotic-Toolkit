@@ -88,21 +88,37 @@ def _build_outline_curve(footprint, perimeter_offset, toe_ext, heel_ext):
         bbox = outline.GetBoundingBox(True)
         if bbox.IsValid:
             center = bbox.Center
-            y_range = bbox.Max.Y - bbox.Min.Y
-            if y_range > 0:
+            axis = getattr(state, "toe_heel_axis", "Y")
+            toe_dir = getattr(state, "toe_direction", 1)
+
+            if axis == "X":
+                ax_range = bbox.Max.X - bbox.Min.X
+            else:
+                ax_range = bbox.Max.Y - bbox.Min.Y
+
+            if ax_range > 0:
                 total_ext = toe_ext + heel_ext
-                scale_y = (y_range + total_ext) / y_range
-                shift_y = (toe_ext - heel_ext) / 2.0
+                scale_factor = (ax_range + total_ext) / ax_range
+                shift = toe_dir * (toe_ext - heel_ext) / 2.0
 
-                xform_scale = rg.Transform.Scale(
-                    rg.Plane(center, rg.Vector3d.XAxis, rg.Vector3d.YAxis),
-                    1.0, scale_y, 1.0,
-                )
-                outline.Transform(xform_scale)
-
-                if abs(shift_y) > 0.001:
-                    xform_move = rg.Transform.Translation(0, shift_y, 0)
-                    outline.Transform(xform_move)
+                if axis == "X":
+                    xform_scale = rg.Transform.Scale(
+                        rg.Plane(center, rg.Vector3d.XAxis, rg.Vector3d.YAxis),
+                        scale_factor, 1.0, 1.0,
+                    )
+                    outline.Transform(xform_scale)
+                    if abs(shift) > 0.001:
+                        xform_move = rg.Transform.Translation(shift, 0, 0)
+                        outline.Transform(xform_move)
+                else:
+                    xform_scale = rg.Transform.Scale(
+                        rg.Plane(center, rg.Vector3d.XAxis, rg.Vector3d.YAxis),
+                        1.0, scale_factor, 1.0,
+                    )
+                    outline.Transform(xform_scale)
+                    if abs(shift) > 0.001:
+                        xform_move = rg.Transform.Translation(0, shift, 0)
+                        outline.Transform(xform_move)
 
     if not outline.IsClosed:
         outline.MakeClosed(tol)
@@ -153,7 +169,7 @@ def disable_insole_preview():
 
 
 def _get_panel_values():
-    """Read outline parameters from state (kept in sync by panel sliders)."""
+    """Read outline parameters from state (synced by panel before command runs)."""
     return state.perimeter_offset, state.toe_extension, state.heel_extension
 
 

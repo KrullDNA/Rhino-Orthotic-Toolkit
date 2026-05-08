@@ -464,13 +464,10 @@ class OrthoticPanel(ef.Panel):
         return page
 
     def _on_outline_slider_changed(self, sender, e):
-        """Update state and live insole preview when any outline slider moves."""
+        """Update the live insole preview when any outline slider moves."""
         try:
-            params = self.get_outline_params()
-            state.perimeter_offset = params[0]
-            state.toe_extension = params[1]
-            state.heel_extension = params[2]
             from commands.cmd_outline import update_insole_preview
+            params = self.get_outline_params()
             update_insole_preview(*params)
         except Exception:
             pass
