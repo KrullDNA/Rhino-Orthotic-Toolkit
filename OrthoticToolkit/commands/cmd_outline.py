@@ -538,20 +538,30 @@ def apply_edited_outline():
         )
         return
 
-    # Turn grips off to commit grip edits to the actual geometry,
-    # then read the curves, then re-enable grips
-    for attr in ("insole_outline_guid", "insole_bottom_outline_guid"):
-        guid = getattr(state, attr, None)
-        if guid is not None:
-            obj = doc.Objects.FindId(guid)
-            if obj is not None and obj.GripsOn:
-                obj.GripsOn = False
+    # Deselect everything to force Rhino to commit grip edits
+    Rhino.RhinoApp.RunScript("_SelNone", False)
 
     top_curve = None
     if state.insole_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_outline_guid)
         if obj is not None:
-            top_curve = obj.Geometry.DuplicateCurve()
+            # Try reading grip positions directly
+            grips = obj.GetGrips()
+            if grips is not None and len(grips) > 0:
+                pts = [g.CurrentLocation for g in grips]
+                grip_crv = rg.Curve.CreateInterpolatedCurve(
+                    pts, 3, rg.CurveKnotStyle.ChordSquareRoot,
+                )
+                if grip_crv is not None:
+                    top_curve = grip_crv
+                    Rhino.RhinoApp.WriteLine(
+                        "Orthotic Toolkit: Apply - read {} grip positions".format(
+                            len(pts)
+                        )
+                    )
+            # Fallback to stored geometry
+            if top_curve is None:
+                top_curve = obj.Geometry.DuplicateCurve()
 
     if top_curve is None:
         Rhino.RhinoApp.WriteLine(
@@ -580,7 +590,17 @@ def apply_edited_outline():
     if state.insole_bottom_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_bottom_outline_guid)
         if obj is not None:
-            bot_crv = obj.Geometry.DuplicateCurve()
+            bot_crv = None
+            grips = obj.GetGrips()
+            if grips is not None and len(grips) > 0:
+                pts = [g.CurrentLocation for g in grips]
+                grip_crv = rg.Curve.CreateInterpolatedCurve(
+                    pts, 3, rg.CurveKnotStyle.ChordSquareRoot,
+                )
+                if grip_crv is not None:
+                    bot_crv = grip_crv
+            if bot_crv is None:
+                bot_crv = obj.Geometry.DuplicateCurve()
             flat_bot = rg.Curve.ProjectToPlane(bot_crv, rg.Plane.WorldXY)
             if flat_bot is not None:
                 bottom_outline = flat_bot
