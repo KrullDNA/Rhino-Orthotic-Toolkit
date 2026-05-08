@@ -10,6 +10,8 @@ import Eto.Forms as ef
 import Eto.Drawing as ed
 import Rhino
 
+import state
+
 
 # Tab definitions: (title, description)
 TAB_DEFINITIONS = [
@@ -308,7 +310,7 @@ class OrthoticPanel(ef.Panel):
 
     def _make_slider_row(self, attr_name, min_val, max_val, default, step,
                          tooltip, fmt="{:.1f}"):
-        """Create a slider + value label + text input row."""
+        """Create a slider + value label row. Returns (row_layout, slider, label)."""
         row = ef.DynamicLayout()
         row.DefaultSpacing = ed.Size(5, 0)
 
@@ -323,42 +325,18 @@ class OrthoticPanel(ef.Panel):
         slider.ToolTip = tooltip
 
         val_label = ef.Label()
-        val_label.Text = fmt.format(float(default))
+        val_label.Text = fmt.format(default)
         val_label.ToolTip = "Current value"
-        val_label.Width = 45
-
-        val_input = ef.TextBox()
-        val_input.Text = fmt.format(float(default))
-        val_input.ToolTip = "Type a value and press Enter"
-        val_input.Width = 55
-        val_input.PlaceholderText = "..."
 
         def on_change(s, e):
             val = min_val + slider.Value * step
-            val_label.Text = fmt.format(float(val))
-
-        def on_text_key(s, e):
-            if e.Key == ef.Keys.Enter:
-                try:
-                    val = float(val_input.Text)
-                    if val < min_val:
-                        val = min_val
-                    elif val > max_val:
-                        val = max_val
-                    tick = int(round((val - min_val) / step)) if step > 0 else 0
-                    slider.Value = tick
-                    val_label.Text = fmt.format(float(val))
-                    val_input.Text = fmt.format(float(val))
-                except (ValueError, OverflowError):
-                    pass
+            val_label.Text = fmt.format(val)
 
         slider.ValueChanged += on_change
-        val_input.KeyDown += on_text_key
 
         row.BeginHorizontal()
         row.Add(slider, xscale=True)
         row.Add(val_label)
-        row.Add(val_input)
         row.EndHorizontal()
 
         # Store references for later retrieval
@@ -605,11 +583,6 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_arch(self, sender, e):
         self._clear_tab_warning("Arch")
-        p = self.get_arch_params()
-        state.arch_height_mm = p[0]
-        state.arch_apex_pct = p[1]
-        state.arch_width_mm = p[2]
-        state.arch_blend_radius = p[3]
         Rhino.RhinoApp.RunScript("OT_AddArch", False)
 
     def get_arch_params(self):
@@ -733,12 +706,6 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_heelcup(self, sender, e):
         self._clear_tab_warning("Heel Cup")
-        p = self.get_heelcup_params()
-        state.cup_depth_mm = p[0]
-        state.posterior_angle_deg = p[1]
-        state.lateral_flare_deg = p[2]
-        state.medial_flare_deg = p[3]
-        state.cup_width_pct = p[4]
         Rhino.RhinoApp.RunScript("OT_AddHeelCup", False)
 
     def get_heelcup_params(self):
@@ -835,9 +802,6 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_metdome(self, sender, e):
         self._clear_tab_warning("Forefoot")
-        p = self.get_metdome_params()
-        state.dome_count = p[0]
-        state.dome_positions = p[1]
         Rhino.RhinoApp.RunScript("OT_AddMetDome", False)
 
     def get_metdome_params(self):
@@ -966,12 +930,6 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_posting(self, sender, e):
         self._clear_tab_warning("Posting")
-        p = self.get_posting_params()
-        state.rf_medial_deg = p[0]
-        state.rf_lateral_deg = p[1]
-        state.ff_medial_deg = p[2]
-        state.ff_lateral_deg = p[3]
-        state.split_pct = p[4]
         Rhino.RhinoApp.RunScript("OT_AddPosting", False)
 
     def get_posting_params(self):
@@ -1126,10 +1084,6 @@ class OrthoticPanel(ef.Panel):
 
     def _on_apply_thickness(self, sender, e):
         self._clear_tab_warning("Thickness")
-        p = self.get_thickness_params()
-        state.cover_thickness_mm = p[0]
-        state.shell_thickness_mm = p[1]
-        state.base_thickness_mm = p[2]
         Rhino.RhinoApp.RunScript("OT_SetThickness", False)
 
     def _on_run_validation(self, sender, e):
