@@ -27,15 +27,7 @@ DEFAULT_DOME_DIAMETER = 10.0
 
 
 def _get_panel_values():
-    """Read metatarsal dome parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_metdome_params"):
-                    return panel.get_metdome_params()
-    except Exception:
-        pass
+    """Read metatarsal dome parameters from state (kept in sync by panel sliders)."""
     return state.dome_count, state.dome_positions
 
 

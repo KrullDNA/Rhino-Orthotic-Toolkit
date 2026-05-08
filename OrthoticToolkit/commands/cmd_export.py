@@ -40,15 +40,7 @@ MESH_PRESETS = {
 
 
 def _get_panel_values():
-    """Read export parameters from the panel."""
-    try:
-        panels = rui.Panels.GetOpenPanelContents(PANEL_GUID)
-        if panels is not None:
-            for panel in panels:
-                if hasattr(panel, "get_export_params"):
-                    return panel.get_export_params()
-    except Exception:
-        pass
+    """Read export parameters from state (kept in sync by panel sliders)."""
     return (
         state.export_format,
         state.mesh_tolerance,

@@ -464,16 +464,23 @@ class OrthoticPanel(ef.Panel):
         return page
 
     def _on_outline_slider_changed(self, sender, e):
-        """Update the live insole preview when any outline slider moves."""
+        """Update state and live insole preview when any outline slider moves."""
         try:
-            from commands.cmd_outline import update_insole_preview
             params = self.get_outline_params()
+            state.perimeter_offset = params[0]
+            state.toe_extension = params[1]
+            state.heel_extension = params[2]
+            from commands.cmd_outline import update_insole_preview
             update_insole_preview(*params)
         except Exception:
             pass
 
     def _on_generate_outline(self, sender, e):
         self._clear_tab_warning("Outline")
+        p = self.get_outline_params()
+        state.perimeter_offset = p[0]
+        state.toe_extension = p[1]
+        state.heel_extension = p[2]
         Rhino.RhinoApp.RunScript("OT_GenerateOutline", False)
 
     def get_outline_params(self):
@@ -581,6 +588,11 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_arch(self, sender, e):
         self._clear_tab_warning("Arch")
+        p = self.get_arch_params()
+        state.arch_height_mm = p[0]
+        state.arch_apex_pct = p[1]
+        state.arch_width_mm = p[2]
+        state.arch_blend_radius = p[3]
         Rhino.RhinoApp.RunScript("OT_AddArch", False)
 
     def get_arch_params(self):
@@ -704,6 +716,12 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_heelcup(self, sender, e):
         self._clear_tab_warning("Heel Cup")
+        p = self.get_heelcup_params()
+        state.cup_depth_mm = p[0]
+        state.posterior_angle_deg = p[1]
+        state.lateral_flare_deg = p[2]
+        state.medial_flare_deg = p[3]
+        state.cup_width_pct = p[4]
         Rhino.RhinoApp.RunScript("OT_AddHeelCup", False)
 
     def get_heelcup_params(self):
@@ -800,6 +818,9 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_metdome(self, sender, e):
         self._clear_tab_warning("Forefoot")
+        p = self.get_metdome_params()
+        state.dome_count = p[0]
+        state.dome_positions = p[1]
         Rhino.RhinoApp.RunScript("OT_AddMetDome", False)
 
     def get_metdome_params(self):
@@ -928,6 +949,12 @@ class OrthoticPanel(ef.Panel):
 
     def _on_add_posting(self, sender, e):
         self._clear_tab_warning("Posting")
+        p = self.get_posting_params()
+        state.rf_medial_deg = p[0]
+        state.rf_lateral_deg = p[1]
+        state.ff_medial_deg = p[2]
+        state.ff_lateral_deg = p[3]
+        state.split_pct = p[4]
         Rhino.RhinoApp.RunScript("OT_AddPosting", False)
 
     def get_posting_params(self):
@@ -1082,6 +1109,10 @@ class OrthoticPanel(ef.Panel):
 
     def _on_apply_thickness(self, sender, e):
         self._clear_tab_warning("Thickness")
+        p = self.get_thickness_params()
+        state.cover_thickness_mm = p[0]
+        state.shell_thickness_mm = p[1]
+        state.base_thickness_mm = p[2]
         Rhino.RhinoApp.RunScript("OT_SetThickness", False)
 
     def _on_run_validation(self, sender, e):
