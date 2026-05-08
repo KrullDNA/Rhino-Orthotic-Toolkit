@@ -363,6 +363,30 @@ def _remove_previous_objects(doc):
             setattr(state, attr, None)
 
 
+def _lift_curve_to_sole(curve, last_brep):
+    """Lift a flat XY curve so each control point sits on the sole surface.
+
+    Returns a new NurbsCurve with Z values from ray-shooting, or None.
+    """
+    nc = curve.ToNurbsCurve()
+    if nc is None:
+        return None
+
+    brep_bbox = last_brep.GetBoundingBox(True)
+    z_start = brep_bbox.Min.Z - 10.0
+    fallback_z = brep_bbox.Min.Z
+
+    for i in range(nc.Points.Count):
+        cp = nc.Points[i]
+        loc = cp.Location
+        z = _sole_z_at(last_brep, loc.X, loc.Y, z_start)
+        if z is None:
+            z = fallback_z
+        nc.Points.SetPoint(i, rg.Point3d(loc.X, loc.Y, z), cp.Weight)
+
+    return nc
+
+
 def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     """Build the insole and add all objects to the document with grips enabled."""
     Rhino.RhinoApp.WriteLine(
@@ -394,18 +418,7 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
 
     _remove_previous_objects(doc)
 
-    # Add top outline with grips enabled
-    outline_layer = ensure_layer(OT_OUTLINE_LAYER)
-    attrs = rd.ObjectAttributes()
-    attrs.LayerIndex = outline_layer
-    attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
-    guid = doc.Objects.AddCurve(top_outline, attrs)
-    state.insole_outline_guid = guid
-    obj = doc.Objects.FindId(guid)
-    if obj is not None:
-        obj.GripsOn = True
-
-    # Create bottom outline at z_bottom with grips
+    # Compute z_bottom from the insole mesh/brep bounding box
     brep_bbox = state.active_last_brep.GetBoundingBox(True)
     z_start = brep_bbox.Min.Z - 10.0
     fallback_z = brep_bbox.Min.Z
@@ -417,13 +430,39 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
         z_sample = fallback_z
     z_bottom = z_sample - total_thickness
 
-    if bottom_outline is not None:
-        bot_curve = bottom_outline.DuplicateCurve()
-    else:
-        bot_curve = top_outline.DuplicateCurve()
+    # Lift top outline onto sole surface so grips follow the insole profile
+    top_3d = _lift_curve_to_sole(top_outline, state.active_last_brep)
+    if top_3d is None:
+        top_3d = top_outline
 
-    xform = rg.Transform.Translation(0, 0, z_bottom)
-    bot_curve.Transform(xform)
+    outline_layer = ensure_layer(OT_OUTLINE_LAYER)
+    attrs = rd.ObjectAttributes()
+    attrs.LayerIndex = outline_layer
+    attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
+    guid = doc.Objects.AddCurve(top_3d, attrs)
+    state.insole_outline_guid = guid
+    obj = doc.Objects.FindId(guid)
+    if obj is not None:
+        obj.GripsOn = True
+
+    # Bottom outline at z_bottom (flat plane for 3D printing)
+    if bottom_outline is not None:
+        bot_curve = bottom_outline.ToNurbsCurve()
+        if bot_curve is None:
+            bot_curve = bottom_outline.DuplicateCurve()
+    else:
+        bot_curve = top_outline.ToNurbsCurve()
+        if bot_curve is None:
+            bot_curve = top_outline.DuplicateCurve()
+
+    # Move all control points to z_bottom
+    nc_bot = bot_curve if isinstance(bot_curve, rg.NurbsCurve) else bot_curve.ToNurbsCurve()
+    if nc_bot is not None:
+        for i in range(nc_bot.Points.Count):
+            cp = nc_bot.Points[i]
+            loc = cp.Location
+            nc_bot.Points.SetPoint(i, rg.Point3d(loc.X, loc.Y, z_bottom), cp.Weight)
+        bot_curve = nc_bot
 
     bot_layer = ensure_layer(OT_BOTTOM_OUTLINE_LAYER)
     attrs_bot = rd.ObjectAttributes()
@@ -456,18 +495,23 @@ def apply_edited_outline():
         )
         return
 
-    top_outline = None
+    top_3d = None
     if state.insole_outline_guid is not None:
         obj = doc.Objects.FindId(state.insole_outline_guid)
         if obj is not None:
-            top_outline = obj.Geometry.DuplicateCurve()
+            top_3d = obj.Geometry.DuplicateCurve()
 
-    if top_outline is None:
+    if top_3d is None:
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: No outline curve found. "
             "Run Generate Outline first."
         )
         return
+
+    # Flatten the edited 3D top curve back to XY for the mesh builder
+    top_outline = rg.Curve.ProjectToPlane(top_3d, rg.Plane.WorldXY)
+    if top_outline is None:
+        top_outline = top_3d
 
     bottom_outline = None
     if state.insole_bottom_outline_guid is not None:
