@@ -363,28 +363,76 @@ def _remove_previous_objects(doc):
             setattr(state, attr, None)
 
 
-def _lift_curve_to_sole(curve, last_brep):
-    """Lift a flat XY curve so each control point sits on the sole surface.
+def _extract_boundary_curves(mesh, n_verts):
+    """Extract the top and bottom boundary curves from the insole mesh.
 
-    Returns a new NurbsCurve with Z values from ray-shooting, or None.
+    The mesh has n_verts top vertices (0..n_verts-1) and n_verts bottom
+    vertices (n_verts..2*n_verts-1). Boundary edges connect perimeter
+    vertices. This extracts ordered polylines of boundary vertex positions
+    and fits smooth NURBS curves to them.
+
+    Returns (top_curve, bottom_curve) or (None, None).
     """
-    nc = curve.ToNurbsCurve()
-    if nc is None:
-        return None
+    top = mesh.TopologyEdges
+    boundary_edges = []
+    for ei in range(top.Count):
+        conn = top.GetConnectedFaces(ei)
+        if conn is not None and len(conn) == 1:
+            ev = top.GetTopologyVertices(ei)
+            a = mesh.TopologyVertices.MeshVertexIndices(ev.I)[0]
+            b = mesh.TopologyVertices.MeshVertexIndices(ev.J)[0]
+            if a < n_verts and b < n_verts:
+                boundary_edges.append((a, b))
 
-    brep_bbox = last_brep.GetBoundingBox(True)
-    z_start = brep_bbox.Min.Z - 10.0
-    fallback_z = brep_bbox.Min.Z
+    if len(boundary_edges) == 0:
+        return None, None
 
-    for i in range(nc.Points.Count):
-        cp = nc.Points[i]
-        loc = cp.Location
-        z = _sole_z_at(last_brep, loc.X, loc.Y, z_start)
-        if z is None:
-            z = fallback_z
-        nc.Points.SetPoint(i, rg.Point3d(loc.X, loc.Y, z), cp.Weight)
+    adj = {}
+    for a, b in boundary_edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
 
-    return nc
+    start = boundary_edges[0][0]
+    ordered = [start]
+    visited = {start}
+    current = start
+    while True:
+        nxt = None
+        for nb in adj.get(current, []):
+            if nb not in visited:
+                nxt = nb
+                break
+        if nxt is None:
+            break
+        ordered.append(nxt)
+        visited.add(nxt)
+        current = nxt
+
+    top_pts = [mesh.Vertices[i] for i in ordered]
+    top_pts.append(top_pts[0])
+    bot_pts = [mesh.Vertices[i + n_verts] for i in ordered]
+    bot_pts.append(bot_pts[0])
+
+    top_pts3 = [rg.Point3d(p.X, p.Y, p.Z) for p in top_pts]
+    bot_pts3 = [rg.Point3d(p.X, p.Y, p.Z) for p in bot_pts]
+
+    top_crv = rg.Curve.CreateInterpolatedCurve(
+        top_pts3, 3, rg.CurveKnotStyle.ChordSquareRoot,
+    )
+    bot_crv = rg.Curve.CreateInterpolatedCurve(
+        bot_pts3, 3, rg.CurveKnotStyle.ChordSquareRoot,
+    )
+
+    if top_crv is not None:
+        top_rebuilt = top_crv.Rebuild(20, 3, False)
+        if top_rebuilt is not None:
+            top_crv = top_rebuilt
+    if bot_crv is not None:
+        bot_rebuilt = bot_crv.Rebuild(20, 3, False)
+        if bot_rebuilt is not None:
+            bot_crv = bot_rebuilt
+
+    return top_crv, bot_crv
 
 
 def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
@@ -393,12 +441,21 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
         "Orthotic Toolkit: Creating sole-conforming insole..."
     )
 
-    insole_brep = _create_conforming_insole(
+    insole_mesh = _build_insole_mesh(
         state.active_last_brep, top_outline, total_thickness,
         bottom_outline,
     )
+    if insole_mesh is None:
+        Rhino.RhinoApp.WriteLine(
+            "Orthotic Toolkit: Failed to build insole mesh."
+        )
+        return False
 
+    n_verts = insole_mesh.Vertices.Count // 2
+
+    insole_brep = rg.Brep.CreateFromMesh(insole_mesh, False)
     conforming = insole_brep is not None
+
     if not conforming:
         Rhino.RhinoApp.WriteLine(
             "Orthotic Toolkit: Conforming approach unavailable, "
@@ -418,75 +475,67 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
 
     _remove_previous_objects(doc)
 
-    # Compute z_bottom from the insole mesh/brep bounding box
-    brep_bbox = state.active_last_brep.GetBoundingBox(True)
-    z_start = brep_bbox.Min.Z - 10.0
-    fallback_z = brep_bbox.Min.Z
-    z_sample = _sole_z_at(
-        state.active_last_brep,
-        brep_bbox.Center.X, brep_bbox.Center.Y, z_start,
-    )
-    if z_sample is None:
-        z_sample = fallback_z
-    z_bottom = z_sample - total_thickness
+    # Extract actual top and bottom edge curves from the mesh
+    top_edge, bot_edge = _extract_boundary_curves(insole_mesh, n_verts)
 
-    # Lift top outline onto sole surface so grips follow the insole profile
-    top_3d = _lift_curve_to_sole(top_outline, state.active_last_brep)
-    if top_3d is None:
-        top_3d = top_outline
+    # Fallback if extraction fails
+    if top_edge is None:
+        top_edge = top_outline
+    if bot_edge is None:
+        bot_edge = top_outline.DuplicateCurve()
+        brep_bbox = state.active_last_brep.GetBoundingBox(True)
+        z_start = brep_bbox.Min.Z - 10.0
+        z_sample = _sole_z_at(
+            state.active_last_brep,
+            brep_bbox.Center.X, brep_bbox.Center.Y, z_start,
+        )
+        if z_sample is None:
+            z_sample = brep_bbox.Min.Z
+        xform = rg.Transform.Translation(0, 0, z_sample - total_thickness)
+        bot_edge.Transform(xform)
 
+    # Add top edge curve with grips
     outline_layer = ensure_layer(OT_OUTLINE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = outline_layer
     attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
-    guid = doc.Objects.AddCurve(top_3d, attrs)
+    guid = doc.Objects.AddCurve(top_edge, attrs)
     state.insole_outline_guid = guid
     obj = doc.Objects.FindId(guid)
     if obj is not None:
         obj.GripsOn = True
 
-    # Bottom outline at z_bottom (flat plane for 3D printing)
-    if bottom_outline is not None:
-        bot_curve = bottom_outline.ToNurbsCurve()
-        if bot_curve is None:
-            bot_curve = bottom_outline.DuplicateCurve()
-    else:
-        bot_curve = top_outline.ToNurbsCurve()
-        if bot_curve is None:
-            bot_curve = top_outline.DuplicateCurve()
-
-    # Move all control points to z_bottom
-    nc_bot = bot_curve if isinstance(bot_curve, rg.NurbsCurve) else bot_curve.ToNurbsCurve()
-    if nc_bot is not None:
-        for i in range(nc_bot.Points.Count):
-            cp = nc_bot.Points[i]
-            loc = cp.Location
-            nc_bot.Points.SetPoint(i, rg.Point3d(loc.X, loc.Y, z_bottom), cp.Weight)
-        bot_curve = nc_bot
-
+    # Add bottom edge curve with grips
     bot_layer = ensure_layer(OT_BOTTOM_OUTLINE_LAYER)
     attrs_bot = rd.ObjectAttributes()
     attrs_bot.LayerIndex = bot_layer
     attrs_bot.ColorSource = rd.ObjectColorSource.ColorFromLayer
-    bot_guid = doc.Objects.AddCurve(bot_curve, attrs_bot)
+    bot_guid = doc.Objects.AddCurve(bot_edge, attrs_bot)
     state.insole_bottom_outline_guid = bot_guid
     bot_obj = doc.Objects.FindId(bot_guid)
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole Brep
+    # Add insole Brep (or mesh if Brep conversion failed)
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
     attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
-    state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
+    if conforming:
+        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
+    else:
+        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
 
     doc.Views.Redraw()
     return True
 
 
 def apply_edited_outline():
-    """Read back edited outline curves and rebuild the insole."""
+    """Read back edited outline curves and rebuild the insole.
+
+    Commits any pending grip edits, reads the curves, flattens the
+    top curve to XY for the mesh builder, and rebuilds everything.
+    """
     doc = sc.doc
 
     if state.active_last_brep is None:
@@ -494,6 +543,14 @@ def apply_edited_outline():
             "Orthotic Toolkit: No shoe last selected."
         )
         return
+
+    # Commit grip edits by turning grips off then reading geometry
+    for attr in ("insole_outline_guid", "insole_bottom_outline_guid"):
+        guid = getattr(state, attr, None)
+        if guid is not None:
+            obj = doc.Objects.FindId(guid)
+            if obj is not None and obj.GripsOn:
+                obj.CommitChanges()
 
     top_3d = None
     if state.insole_outline_guid is not None:
