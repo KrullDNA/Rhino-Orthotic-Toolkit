@@ -506,11 +506,12 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole as mesh — lock it so grips on curves don't move the mesh
+    # Add insole as mesh — set blue color and lock it
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
-    attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
+    attrs2.ColorSource = rd.ObjectColorSource.ColorFromObject
+    attrs2.ObjectColor = System.Drawing.Color.FromArgb(0, 120, 255)
     state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
     mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
     if mesh_obj is not None:
@@ -559,9 +560,19 @@ def apply_edited_outline():
         return
 
     # Flatten to XY to get the new perimeter shape
+    top_bb = top_curve.GetBoundingBox(True)
     flat_top = rg.Curve.ProjectToPlane(top_curve, rg.Plane.WorldXY)
     if flat_top is None:
         flat_top = top_curve
+
+    flat_bb = flat_top.GetBoundingBox(True)
+    Rhino.RhinoApp.WriteLine(
+        "Orthotic Toolkit: Apply - edited curve bbox X: {:.1f}-{:.1f}, "
+        "Y: {:.1f}-{:.1f} -> flat X: {:.1f}-{:.1f}, Y: {:.1f}-{:.1f}".format(
+            top_bb.Min.X, top_bb.Max.X, top_bb.Min.Y, top_bb.Max.Y,
+            flat_bb.Min.X, flat_bb.Max.X, flat_bb.Min.Y, flat_bb.Max.Y,
+        )
+    )
 
     # Read bottom curve if edited, flatten to XY
     bottom_outline = None
@@ -582,6 +593,12 @@ def apply_edited_outline():
     )
 
     # Rebuild insole mesh using the new XY outline shape
+    Rhino.RhinoApp.WriteLine(
+        "Orthotic Toolkit: Apply - rebuilding with thickness {:.1f}mm...".format(
+            total_thickness
+        )
+    )
+
     new_mesh, _info = _build_insole_mesh(
         state.active_last_brep, flat_top, total_thickness, bottom_outline,
     )
@@ -591,16 +608,28 @@ def apply_edited_outline():
         )
         return
 
+    mesh_bb = new_mesh.GetBoundingBox(True)
+    Rhino.RhinoApp.WriteLine(
+        "Orthotic Toolkit: Apply - new mesh verts: {}, "
+        "bbox X: {:.1f}-{:.1f}, Y: {:.1f}-{:.1f}, Z: {:.1f}-{:.1f}".format(
+            new_mesh.Vertices.Count,
+            mesh_bb.Min.X, mesh_bb.Max.X,
+            mesh_bb.Min.Y, mesh_bb.Max.Y,
+            mesh_bb.Min.Z, mesh_bb.Max.Z,
+        )
+    )
+
     # Remove old insole mesh only (keep the curves in place)
     if state.insole_brep_guid is not None:
         doc.Objects.Delete(state.insole_brep_guid, True)
         state.insole_brep_guid = None
 
-    # Add new insole mesh — lock it so grip edits don't move the mesh
+    # Add new insole mesh — set blue color and lock it
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs = rd.ObjectAttributes()
     attrs.LayerIndex = insole_layer
-    attrs.ColorSource = rd.ObjectColorSource.ColorFromLayer
+    attrs.ColorSource = rd.ObjectColorSource.ColorFromObject
+    attrs.ObjectColor = System.Drawing.Color.FromArgb(0, 120, 255)
     state.insole_brep_guid = doc.Objects.AddMesh(new_mesh, attrs)
     mesh_obj = doc.Objects.FindId(state.insole_brep_guid)
     if mesh_obj is not None:

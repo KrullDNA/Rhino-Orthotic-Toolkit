@@ -16,8 +16,9 @@ LAYER_COLORS = {
     "OT_Preview":         (0, 180, 0),       # green
     "OT_FootScan":        (100, 180, 255),    # light blue
     "OT_PlantarSurface":  (255, 200, 0),      # yellow
-    "OT_Outline":         (255, 100, 0),      # orange
-    "OT_Insole":          (0, 120, 200),      # blue
+    "OT_Outline":         (255, 165, 0),      # orange
+    "OT_BottomOutline":   (255, 200, 0),      # yellow
+    "OT_Insole":          (0, 120, 255),      # blue
     "OT_Warnings":        (220, 0, 0),        # red
     "OT_RockerContact":   (160, 0, 200),      # purple
 }
