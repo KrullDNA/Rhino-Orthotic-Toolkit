@@ -30,6 +30,10 @@ layer_cover = None             # Brep for cover layer
 layer_shell = None             # Brep for shell layer
 layer_base = None              # Brep for base layer
 
+# --- Orientation ---
+toe_heel_axis = "Y"            # "X" or "Y": which axis runs toe-to-heel
+toe_direction = 1              # +1 or -1: sign along toe_heel_axis toward toe
+
 # --- Outline Parameters ---
 perimeter_offset = 2.0         # Perimeter offset in mm
 toe_extension = 0.0            # Toe extension in mm
@@ -77,6 +81,7 @@ def reset_all():
     global insole_outline, insole_brep, insole_outline_guid, insole_brep_guid
     global cover_thickness_mm, shell_thickness_mm, base_thickness_mm
     global layer_cover, layer_shell, layer_base
+    global toe_heel_axis, toe_direction
     global perimeter_offset, toe_extension, heel_extension
     global arch_height_mm, arch_apex_pct, arch_width_mm, arch_blend_radius
     global cup_depth_mm, posterior_angle_deg, lateral_flare_deg
@@ -109,6 +114,10 @@ def reset_all():
     layer_cover = None
     layer_shell = None
     layer_base = None
+
+    # Orientation
+    toe_heel_axis = "Y"
+    toe_direction = 1
 
     # Outline Parameters
     perimeter_offset = 2.0

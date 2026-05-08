@@ -178,6 +178,93 @@ def _get_face_boundary(face):
     return None
 
 
+def _detect_orientation(footprint):
+    """Detect the toe-heel axis and toe direction from the footprint curve.
+
+    The longest bounding box axis is the toe-heel direction.
+    The narrower end is the toe.  Stores results in state.
+    """
+    bbox = footprint.GetBoundingBox(True)
+    if not bbox.IsValid:
+        return
+
+    x_len = bbox.Max.X - bbox.Min.X
+    y_len = bbox.Max.Y - bbox.Min.Y
+
+    if y_len >= x_len:
+        state.toe_heel_axis = "Y"
+        mid_x = (bbox.Min.X + bbox.Max.X) / 2.0
+        # Measure width at the low-Y end and high-Y end
+        low_y = bbox.Min.Y + y_len * 0.15
+        high_y = bbox.Max.Y - y_len * 0.15
+        low_plane = rg.Plane(
+            rg.Point3d(0, low_y, 0), rg.Vector3d.ZAxis
+        )
+        high_plane = rg.Plane(
+            rg.Point3d(0, high_y, 0), rg.Vector3d.ZAxis
+        )
+    else:
+        state.toe_heel_axis = "X"
+        mid_y = (bbox.Min.Y + bbox.Max.Y) / 2.0
+        low_x = bbox.Min.X + x_len * 0.15
+        high_x = bbox.Max.X - x_len * 0.15
+        low_plane = rg.Plane(
+            rg.Point3d(low_x, 0, 0), rg.Vector3d.ZAxis
+        )
+        high_plane = rg.Plane(
+            rg.Point3d(high_x, 0, 0), rg.Vector3d.ZAxis
+        )
+
+    # Measure widths by intersecting the footprint with planes near each end
+    tol = 0.01
+    low_width = 0.0
+    high_width = 0.0
+
+    try:
+        events_low = rg.Intersect.Intersection.CurvePlane(
+            footprint, low_plane, tol
+        )
+        if events_low is not None and len(events_low) >= 2:
+            pts = [ev.PointA for ev in events_low]
+            if state.toe_heel_axis == "Y":
+                xs = [p.X for p in pts]
+                low_width = max(xs) - min(xs)
+            else:
+                ys = [p.Y for p in pts]
+                low_width = max(ys) - min(ys)
+    except Exception:
+        pass
+
+    try:
+        events_high = rg.Intersect.Intersection.CurvePlane(
+            footprint, high_plane, tol
+        )
+        if events_high is not None and len(events_high) >= 2:
+            pts = [ev.PointA for ev in events_high]
+            if state.toe_heel_axis == "Y":
+                xs = [p.X for p in pts]
+                high_width = max(xs) - min(xs)
+            else:
+                ys = [p.Y for p in pts]
+                high_width = max(ys) - min(ys)
+    except Exception:
+        pass
+
+    # Narrower end is the toe
+    if state.toe_heel_axis == "Y":
+        state.toe_direction = 1 if high_width <= low_width else -1
+    else:
+        state.toe_direction = 1 if high_width <= low_width else -1
+
+    Rhino.RhinoApp.WriteLine(
+        "Orthotic Toolkit: Orientation detected - "
+        "toe-heel axis: {}, toe direction: {}".format(
+            state.toe_heel_axis,
+            "+" if state.toe_direction > 0 else "-"
+        )
+    )
+
+
 def _refresh_panel(last_name, error=False):
     """Update the panel status bar with the last name or error."""
     try:
@@ -269,6 +356,9 @@ class OT_SetLast(rc.Command):
                 doc.Objects.Delete(obj_id, True)
             except Exception:
                 pass
+
+        # Detect toe-heel orientation from the footprint
+        _detect_orientation(footprint)
 
         # Store results in state
         state.active_last_brep = brep

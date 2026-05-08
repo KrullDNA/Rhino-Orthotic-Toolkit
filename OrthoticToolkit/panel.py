@@ -308,7 +308,7 @@ class OrthoticPanel(ef.Panel):
 
     def _make_slider_row(self, attr_name, min_val, max_val, default, step,
                          tooltip, fmt="{:.1f}"):
-        """Create a slider + value label row. Returns (row_layout, slider, label)."""
+        """Create a slider + value label + text input row."""
         row = ef.DynamicLayout()
         row.DefaultSpacing = ed.Size(5, 0)
 
@@ -322,48 +322,48 @@ class OrthoticPanel(ef.Panel):
         slider.Value = default_tick
         slider.ToolTip = tooltip
 
+        val_label = ef.Label()
+        val_label.Text = fmt.format(float(default))
+        val_label.ToolTip = "Current value"
+        val_label.Width = 45
+
         val_input = ef.TextBox()
         val_input.Text = fmt.format(float(default))
-        val_input.ToolTip = "Type a value or use the slider"
+        val_input.ToolTip = "Type a value and press Enter"
         val_input.Width = 55
+        val_input.PlaceholderText = "..."
 
-        _updating = [False]
-
-        def on_slider_change(s, e):
-            if _updating[0]:
-                return
-            _updating[0] = True
+        def on_change(s, e):
             val = min_val + slider.Value * step
-            val_input.Text = fmt.format(float(val))
-            _updating[0] = False
+            val_label.Text = fmt.format(float(val))
 
-        def on_text_change(s, e):
-            if _updating[0]:
-                return
-            _updating[0] = True
-            try:
-                val = float(val_input.Text)
-                if val < min_val:
-                    val = min_val
-                elif val > max_val:
-                    val = max_val
-                tick = int(round((val - min_val) / step)) if step > 0 else 0
-                slider.Value = tick
-            except (ValueError, OverflowError):
-                pass
-            _updating[0] = False
+        def on_text_key(s, e):
+            if e.Key == ef.Keys.Enter:
+                try:
+                    val = float(val_input.Text)
+                    if val < min_val:
+                        val = min_val
+                    elif val > max_val:
+                        val = max_val
+                    tick = int(round((val - min_val) / step)) if step > 0 else 0
+                    slider.Value = tick
+                    val_label.Text = fmt.format(float(val))
+                    val_input.Text = fmt.format(float(val))
+                except (ValueError, OverflowError):
+                    pass
 
-        slider.ValueChanged += on_slider_change
-        val_input.LostFocus += on_text_change
+        slider.ValueChanged += on_change
+        val_input.KeyDown += on_text_key
 
         row.BeginHorizontal()
         row.Add(slider, xscale=True)
+        row.Add(val_label)
         row.Add(val_input)
         row.EndHorizontal()
 
         # Store references for later retrieval
         setattr(self, "_slider_" + attr_name, slider)
-        setattr(self, "_slbl_" + attr_name, val_input)
+        setattr(self, "_slbl_" + attr_name, val_label)
         setattr(self, "_smeta_" + attr_name, (min_val, step, fmt))
 
         return row
@@ -464,13 +464,10 @@ class OrthoticPanel(ef.Panel):
         return page
 
     def _on_outline_slider_changed(self, sender, e):
-        """Update state and live insole preview when any outline slider moves."""
+        """Update the live insole preview when any outline slider moves."""
         try:
-            params = self.get_outline_params()
-            state.perimeter_offset = params[0]
-            state.toe_extension = params[1]
-            state.heel_extension = params[2]
             from commands.cmd_outline import update_insole_preview
+            params = self.get_outline_params()
             update_insole_preview(*params)
         except Exception:
             pass
