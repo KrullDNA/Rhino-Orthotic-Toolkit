@@ -322,24 +322,48 @@ class OrthoticPanel(ef.Panel):
         slider.Value = default_tick
         slider.ToolTip = tooltip
 
-        val_label = ef.Label()
-        val_label.Text = fmt.format(default)
-        val_label.ToolTip = "Current value"
+        val_input = ef.TextBox()
+        val_input.Text = fmt.format(float(default))
+        val_input.ToolTip = "Type a value or use the slider"
+        val_input.Width = 55
 
-        def on_change(s, e):
+        _updating = [False]
+
+        def on_slider_change(s, e):
+            if _updating[0]:
+                return
+            _updating[0] = True
             val = min_val + slider.Value * step
-            val_label.Text = fmt.format(val)
+            val_input.Text = fmt.format(float(val))
+            _updating[0] = False
 
-        slider.ValueChanged += on_change
+        def on_text_change(s, e):
+            if _updating[0]:
+                return
+            _updating[0] = True
+            try:
+                val = float(val_input.Text)
+                if val < min_val:
+                    val = min_val
+                elif val > max_val:
+                    val = max_val
+                tick = int(round((val - min_val) / step)) if step > 0 else 0
+                slider.Value = tick
+            except (ValueError, OverflowError):
+                pass
+            _updating[0] = False
+
+        slider.ValueChanged += on_slider_change
+        val_input.LostFocus += on_text_change
 
         row.BeginHorizontal()
         row.Add(slider, xscale=True)
-        row.Add(val_label)
+        row.Add(val_input)
         row.EndHorizontal()
 
         # Store references for later retrieval
         setattr(self, "_slider_" + attr_name, slider)
-        setattr(self, "_slbl_" + attr_name, val_label)
+        setattr(self, "_slbl_" + attr_name, val_input)
         setattr(self, "_smeta_" + attr_name, (min_val, step, fmt))
 
         return row
