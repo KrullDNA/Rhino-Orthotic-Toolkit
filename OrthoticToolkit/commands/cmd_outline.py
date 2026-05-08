@@ -152,7 +152,7 @@ def update_insole_preview(perimeter_offset, toe_ext, heel_ext):
         + state.base_thickness_mm
     )
 
-    mesh = _build_insole_mesh(state.active_last_brep, outline, total_thickness)
+    mesh, _info = _build_insole_mesh(state.active_last_brep, outline, total_thickness)
     _preview_conduit.mesh = mesh
     _preview_conduit.Enabled = mesh is not None
 
@@ -207,12 +207,13 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     Bottom surface is a flat plane at z_bottom = min(sole_z) - thickness.
     Side walls connect top perimeter to bottom perimeter.
 
-    Returns a Mesh or None on failure.
+    Returns (mesh, boundary_info) where boundary_info is a dict with
+    'ordered_indices', 'n_verts', 'z_bottom', or (None, None) on failure.
     """
     tol = sc.doc.ModelAbsoluteTolerance
     brep_bbox = last_brep.GetBoundingBox(True)
     if not brep_bbox.IsValid:
-        return None
+        return None, None
 
     z_start = brep_bbox.Min.Z - 10.0
     fallback_z = brep_bbox.Min.Z
@@ -224,24 +225,23 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     # --- Step 1: Create a planar Brep from the outline ---
     planar_breps = rg.Brep.CreatePlanarBreps(outline, tol)
     if planar_breps is None or len(planar_breps) == 0:
-        return None
+        return None, None
     planar_brep = planar_breps[0]
 
     # --- Step 2: Mesh the planar Brep with Rhino's mesher ---
-    # Use fine meshing for a smooth, uniform triangulation
     mp = rg.MeshingParameters.DefaultAnalysisMesh
-    mp.MaximumEdgeLength = 3.0   # ~3mm max edge for smooth surface
+    mp.MaximumEdgeLength = 3.0
     mp.MinimumEdgeLength = 1.0
-    mp.GridAspectRatio = 1.0     # keep triangles roughly equilateral
+    mp.GridAspectRatio = 1.0
     mp.SimplePlanes = False
 
     flat_meshes = rg.Mesh.CreateFromBrep(planar_brep, mp)
     if flat_meshes is None or len(flat_meshes) == 0:
-        return None
+        return None, None
     flat_mesh = flat_meshes[0]
 
     if flat_mesh.Vertices.Count < 4:
-        return None
+        return None, None
 
     # --- Step 3: Project each vertex onto the sole surface ---
     all_z = []
@@ -288,7 +288,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
             )
 
     # --- Step 5: Side walls from naked edges (boundary edges) ---
-    # Naked edges are boundary edges of the flat mesh — the outline perimeter
     boundary_edges = []
     boundary_verts = set()
     top = flat_mesh.TopologyEdges
@@ -296,7 +295,6 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
         conn_faces = top.GetConnectedFaces(ei)
         if conn_faces is not None and len(conn_faces) == 1:
             edge_verts = top.GetTopologyVertices(ei)
-            # Map topology vertex indices to mesh vertex indices
             a = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.I)[0]
             b = flat_mesh.TopologyVertices.MeshVertexIndices(edge_verts.J)[0]
             boundary_edges.append((a, b))
@@ -314,8 +312,31 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
                 mesh.Vertices.SetVertex(vi + n_verts, bp.X, bp.Y, z_bottom)
 
     for a, b in boundary_edges:
-        # Quad: top_a, top_b, bottom_b, bottom_a
         mesh.Faces.AddFace(a, b, b + n_verts, a + n_verts)
+
+    # --- Step 5b: Chain boundary edges into ordered vertex list ---
+    adj = {}
+    for a, b in boundary_edges:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+
+    ordered = []
+    if len(boundary_edges) > 0:
+        start = boundary_edges[0][0]
+        ordered.append(start)
+        visited = {start}
+        current = start
+        while True:
+            nxt = None
+            for nb in adj.get(current, []):
+                if nb not in visited:
+                    nxt = nb
+                    break
+            if nxt is None:
+                break
+            ordered.append(nxt)
+            visited.add(nxt)
+            current = nxt
 
     # --- Step 6: Finalise ---
     mesh.Normals.ComputeNormals()
@@ -323,7 +344,13 @@ def _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline=None)
     if not mesh.IsValid:
         mesh.RebuildNormals()
 
-    return mesh
+    boundary_info = {
+        "ordered": ordered,
+        "n_verts": n_verts,
+        "z_bottom": z_bottom,
+    }
+
+    return mesh, boundary_info
 
 
 def _create_conforming_insole(last_brep, outline, total_thickness, bottom_outline=None):
@@ -331,7 +358,7 @@ def _create_conforming_insole(last_brep, outline, total_thickness, bottom_outlin
 
     Returns a Brep or None on failure.
     """
-    mesh = _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline)
+    mesh, _info = _build_insole_mesh(last_brep, outline, total_thickness, bottom_outline)
     if mesh is None:
         return None
 
@@ -363,74 +390,47 @@ def _remove_previous_objects(doc):
             setattr(state, attr, None)
 
 
-def _extract_boundary_curves(mesh, n_verts):
-    """Extract the top and bottom boundary curves from the insole mesh.
+def _curves_from_boundary(mesh, boundary_info):
+    """Build smooth top and bottom edge curves from mesh boundary vertices.
 
-    The mesh has n_verts top vertices (0..n_verts-1) and n_verts bottom
-    vertices (n_verts..2*n_verts-1). Boundary edges connect perimeter
-    vertices. This extracts ordered polylines of boundary vertex positions
-    and fits smooth NURBS curves to them.
+    Uses the ordered boundary vertex indices (found on the flat_mesh before
+    side walls were added) to read positions from the final mesh.
 
     Returns (top_curve, bottom_curve) or (None, None).
     """
-    top = mesh.TopologyEdges
-    boundary_edges = []
-    for ei in range(top.Count):
-        conn = top.GetConnectedFaces(ei)
-        if conn is not None and len(conn) == 1:
-            ev = top.GetTopologyVertices(ei)
-            a = mesh.TopologyVertices.MeshVertexIndices(ev.I)[0]
-            b = mesh.TopologyVertices.MeshVertexIndices(ev.J)[0]
-            if a < n_verts and b < n_verts:
-                boundary_edges.append((a, b))
+    ordered = boundary_info.get("ordered", [])
+    n_verts = boundary_info.get("n_verts", 0)
+    z_bottom = boundary_info.get("z_bottom", 0)
 
-    if len(boundary_edges) == 0:
+    if len(ordered) < 3 or n_verts == 0:
         return None, None
 
-    adj = {}
-    for a, b in boundary_edges:
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
+    top_pts = []
+    bot_pts = []
+    for vi in ordered:
+        tv = mesh.Vertices[vi]
+        top_pts.append(rg.Point3d(tv.X, tv.Y, tv.Z))
+        bv = mesh.Vertices[vi + n_verts]
+        bot_pts.append(rg.Point3d(bv.X, bv.Y, bv.Z))
 
-    start = boundary_edges[0][0]
-    ordered = [start]
-    visited = {start}
-    current = start
-    while True:
-        nxt = None
-        for nb in adj.get(current, []):
-            if nb not in visited:
-                nxt = nb
-                break
-        if nxt is None:
-            break
-        ordered.append(nxt)
-        visited.add(nxt)
-        current = nxt
-
-    top_pts = [mesh.Vertices[i] for i in ordered]
     top_pts.append(top_pts[0])
-    bot_pts = [mesh.Vertices[i + n_verts] for i in ordered]
     bot_pts.append(bot_pts[0])
 
-    top_pts3 = [rg.Point3d(p.X, p.Y, p.Z) for p in top_pts]
-    bot_pts3 = [rg.Point3d(p.X, p.Y, p.Z) for p in bot_pts]
-
     top_crv = rg.Curve.CreateInterpolatedCurve(
-        top_pts3, 3, rg.CurveKnotStyle.ChordSquareRoot,
+        top_pts, 3, rg.CurveKnotStyle.ChordSquareRoot,
     )
     bot_crv = rg.Curve.CreateInterpolatedCurve(
-        bot_pts3, 3, rg.CurveKnotStyle.ChordSquareRoot,
+        bot_pts, 3, rg.CurveKnotStyle.ChordSquareRoot,
     )
 
     if top_crv is not None:
-        top_rebuilt = top_crv.Rebuild(20, 3, False)
-        if top_rebuilt is not None:
-            top_crv = top_rebuilt
+        rebuilt = top_crv.Rebuild(20, 3, False)
+        if rebuilt is not None:
+            top_crv = rebuilt
     if bot_crv is not None:
-        bot_rebuilt = bot_crv.Rebuild(20, 3, False)
-        if bot_rebuilt is not None:
-            bot_crv = bot_rebuilt
+        rebuilt = bot_crv.Rebuild(20, 3, False)
+        if rebuilt is not None:
+            bot_crv = rebuilt
 
     return top_crv, bot_crv
 
@@ -441,7 +441,7 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
         "Orthotic Toolkit: Creating sole-conforming insole..."
     )
 
-    insole_mesh = _build_insole_mesh(
+    insole_mesh, boundary_info = _build_insole_mesh(
         state.active_last_brep, top_outline, total_thickness,
         bottom_outline,
     )
@@ -450,8 +450,6 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
             "Orthotic Toolkit: Failed to build insole mesh."
         )
         return False
-
-    n_verts = insole_mesh.Vertices.Count // 2
 
     insole_brep = rg.Brep.CreateFromMesh(insole_mesh, False)
     conforming = insole_brep is not None
@@ -475,23 +473,15 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
 
     _remove_previous_objects(doc)
 
-    # Extract actual top and bottom edge curves from the mesh
-    top_edge, bot_edge = _extract_boundary_curves(insole_mesh, n_verts)
+    # Build edge curves from mesh boundary vertices
+    top_edge, bot_edge = _curves_from_boundary(insole_mesh, boundary_info)
 
-    # Fallback if extraction fails
     if top_edge is None:
         top_edge = top_outline
     if bot_edge is None:
         bot_edge = top_outline.DuplicateCurve()
-        brep_bbox = state.active_last_brep.GetBoundingBox(True)
-        z_start = brep_bbox.Min.Z - 10.0
-        z_sample = _sole_z_at(
-            state.active_last_brep,
-            brep_bbox.Center.X, brep_bbox.Center.Y, z_start,
-        )
-        if z_sample is None:
-            z_sample = brep_bbox.Min.Z
-        xform = rg.Transform.Translation(0, 0, z_sample - total_thickness)
+        z_bot = boundary_info.get("z_bottom", 0) if boundary_info else 0
+        xform = rg.Transform.Translation(0, 0, z_bot)
         bot_edge.Transform(xform)
 
     # Add top edge curve with grips
@@ -516,15 +506,12 @@ def _build_and_add_insole(doc, top_outline, bottom_outline, total_thickness):
     if bot_obj is not None:
         bot_obj.GripsOn = True
 
-    # Add insole Brep (or mesh if Brep conversion failed)
+    # Add insole as mesh (more reliable than Brep.CreateFromMesh for display)
     insole_layer = ensure_layer(OT_INSOLE_LAYER)
     attrs2 = rd.ObjectAttributes()
     attrs2.LayerIndex = insole_layer
     attrs2.ColorSource = rd.ObjectColorSource.ColorFromLayer
-    if conforming:
-        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
-    else:
-        state.insole_brep_guid = doc.Objects.AddBrep(insole_brep, attrs2)
+    state.insole_brep_guid = doc.Objects.AddMesh(insole_mesh, attrs2)
 
     doc.Views.Redraw()
     return True
